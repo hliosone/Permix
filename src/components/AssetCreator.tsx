@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Coins, Plus, Lock, Snowflake, RotateCcw, Check } from 'lucide-react';
+import { Coins, Plus, Lock, Snowflake, RotateCcw, Check, Loader2 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -8,7 +8,17 @@ import { Card } from './ui/card';
 import { Checkbox } from './ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { Badge } from './ui/badge';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
+import {
+  createXRPLClient,
+  disconnectXRPLClient,
+  getFundedWallet,
+  type FundedWallet,
+} from '../services/xrpl-setup';
+import { createIOUToken } from '../services/iou-creator';
+import { addEnterpriseToken, getEnterpriseData } from '../services/enterprise-storage';
+import type { Client } from 'xrpl';
+import { useEffect } from 'react';
 
 interface Asset {
   id: string;
@@ -27,26 +37,14 @@ interface Asset {
   createdAt: string;
 }
 
-export function AssetCreator() {
-  const [assets, setAssets] = useState<Asset[]>([
-    {
-      id: '1',
-      name: 'Euro Stablecoin',
-      code: 'EURC',
-      description: 'MiCA-compliant euro-backed stablecoin',
-      flags: {
-        requireAuth: true,
-        freeze: true,
-        clawback: true,
-      },
-      preset: 'MiCA',
-      issuer: 'rN7n7otQDd6FczFgLdOqDdqu7h3oMVUi9M',
-      supply: '€5,234,567',
-      holders: 432,
-      createdAt: new Date().toISOString(),
-    },
-  ]);
+interface AssetCreatorProps {
+  walletAddress: string;
+}
+
+export function AssetCreator({ walletAddress }: AssetCreatorProps) {
+  const [assets, setAssets] = useState<Asset[]>([]);
   const [isCreating, setIsCreating] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [newAsset, setNewAsset] = useState({
     name: '',
     code: '',
@@ -58,6 +56,52 @@ export function AssetCreator() {
     },
     preset: 'Custom',
   });
+
+  // Funded wallet - will be set when component mounts
+  const [issuerWallet, setIssuerWallet] = useState<FundedWallet | null>(null);
+  const [isLoadingWallets, setIsLoadingWallets] = useState(false);
+
+  // Initialize funded wallet and load assets on component mount
+  useEffect(() => {
+    const initializeWallet = async () => {
+      setIsLoadingWallets(true);
+      try {
+        const client = await createXRPLClient();
+        const wallet = await getFundedWallet(client);
+        setIssuerWallet(wallet);
+        await disconnectXRPLClient(client);
+        console.log('Issuer wallet initialized:', wallet.address);
+      } catch (error) {
+        console.error('Failed to initialize wallet:', error);
+        toast.error('Failed to initialize wallet. Please try again.');
+      } finally {
+        setIsLoadingWallets(false);
+      }
+    };
+
+    // Load assets from enterprise storage
+    const loadAssets = () => {
+      const enterpriseData = getEnterpriseData(walletAddress);
+      if (enterpriseData && enterpriseData.tokens.length > 0) {
+        const loadedAssets: Asset[] = enterpriseData.tokens.map((token) => ({
+          id: token.id,
+          name: token.name,
+          code: token.code,
+          description: token.description,
+          flags: token.flags,
+          preset: 'Custom', // Could be stored in token metadata
+          issuer: token.issuer,
+          supply: '0', // Would need to fetch from blockchain
+          holders: 0, // Would need to fetch from blockchain
+          createdAt: token.createdAt,
+        }));
+        setAssets(loadedAssets);
+      }
+    };
+
+    initializeWallet();
+    loadAssets();
+  }, [walletAddress]);
 
   const presets = [
     {
@@ -88,35 +132,102 @@ export function AssetCreator() {
     }
   };
 
-  const createAsset = () => {
+  const createAsset = async () => {
     if (!newAsset.name.trim() || !newAsset.code.trim()) {
       toast.error('Please enter asset name and code');
       return;
     }
 
-    const asset: Asset = {
-      id: Date.now().toString(),
-      ...newAsset,
-      issuer: 'rN7n7otQDd6FczFgLdOqDdqu7h3oMVUi9M',
-      supply: '0',
-      holders: 0,
-      createdAt: new Date().toISOString(),
-    };
+    if (!issuerWallet) {
+      toast.error('Wallet not initialized. Please wait...');
+      return;
+    }
 
-    setAssets([...assets, asset]);
-    setNewAsset({
-      name: '',
-      code: '',
-      description: '',
-      flags: {
-        requireAuth: false,
-        freeze: false,
-        clawback: false,
-      },
-      preset: 'Custom',
-    });
-    setIsCreating(false);
-    toast.success('Asset created and transaction submitted!');
+    setIsSubmitting(true);
+    let client: Client | null = null;
+
+    try {
+      // 1. Connect to XRPL
+      toast.loading('Connecting to XRPL...', { id: 'xrpl-connect' });
+      client = await createXRPLClient();
+      toast.success('Connected to XRPL', { id: 'xrpl-connect' });
+
+      // 2. Use funded wallet (real seed from XRPL faucet)
+      const wallet = issuerWallet.wallet;
+
+      // 3. Create IOU token on blockchain
+      toast.loading('Creating IOU token on XRPL...', { id: 'create-token' });
+      const result = await createIOUToken(
+        client,
+        wallet.address,
+        newAsset.code.toUpperCase(),
+        newAsset.flags
+      );
+
+      if (result.success) {
+        // 4. Save token to enterprise storage
+        const savedToken = addEnterpriseToken(walletAddress, {
+          currency: result.currency,
+          issuer: result.issuer,
+          name: newAsset.name,
+          code: newAsset.code,
+          description: newAsset.description,
+          flags: newAsset.flags,
+          transactionHashes: result.transactions.map((tx: any) => tx.hash || '').filter(Boolean),
+        });
+
+        // 5. Add asset to local state
+        const asset: Asset = {
+          id: savedToken.id,
+          ...newAsset,
+          issuer: result.issuer,
+          supply: '0',
+          holders: 0,
+          createdAt: savedToken.createdAt,
+        };
+
+        setAssets([...assets, asset]);
+        setNewAsset({
+          name: '',
+          code: '',
+          description: '',
+          flags: {
+            requireAuth: false,
+            freeze: false,
+            clawback: false,
+          },
+          preset: 'Custom',
+        });
+        setIsCreating(false);
+
+        // Show success with transaction hashes
+        const hashList = result.transactions.length > 0 
+          ? `${result.transactions.length} transaction(s) prepared`
+          : 'N/A';
+        toast.success(
+          `Asset created successfully! ${hashList}`,
+          { id: 'create-token', duration: 5000 }
+        );
+      } else {
+        throw new Error(result.error || 'Failed to create IOU token');
+      }
+    } catch (error) {
+      console.error('Error creating asset:', error);
+      toast.error(
+        `Failed to create asset: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        { id: 'create-token' }
+      );
+    } finally {
+      // 5. Disconnect from XRPL
+      if (client) {
+        try {
+          await disconnectXRPLClient(client);
+        } catch (error) {
+          console.error('Error disconnecting from XRPL:', error);
+        }
+      }
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -352,10 +463,20 @@ export function AssetCreator() {
               </Button>
               <Button
                 onClick={createAsset}
-                className="flex-1 bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700 text-white"
+                disabled={isSubmitting}
+                className="flex-1 bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700 text-white disabled:opacity-50"
               >
-                <Coins className="w-4 h-4 mr-2" />
-                Create Asset
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Creating on XRPL...
+                  </>
+                ) : (
+                  <>
+                    <Coins className="w-4 h-4 mr-2" />
+                    Create Asset
+                  </>
+                )}
               </Button>
             </div>
           </div>

@@ -1,4 +1,5 @@
-import { Users, TrendingUp, Activity, Coins, AlertTriangle, Clock } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Users, TrendingUp, Activity, Coins, AlertTriangle, Clock, Globe } from 'lucide-react';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
@@ -10,77 +11,130 @@ import {
   TableHeader,
   TableRow,
 } from './ui/table';
+import { getEnterpriseData, type EnterpriseData } from '../services/enterprise-storage';
 
 interface DashboardOverviewProps {
   companyName: string;
+  walletAddress: string;
 }
 
-export function DashboardOverview({ companyName }: DashboardOverviewProps) {
+export function DashboardOverview({ companyName, walletAddress }: DashboardOverviewProps) {
+  const [enterpriseData, setEnterpriseData] = useState<EnterpriseData | null>(null);
+
+  useEffect(() => {
+    const data = getEnterpriseData(walletAddress);
+    setEnterpriseData(data);
+  }, [walletAddress]);
+
+  // Calculate stats from real data
+  const totalTokens = enterpriseData?.tokens.length || 0;
+  const totalDomains = enterpriseData?.domains.length || 0;
+  const totalDEXes = enterpriseData?.dexes.length || 0;
+  
+  // Calculate recent activity count (last 24 hours)
+  const recentActivityCount = enterpriseData
+    ? [
+        ...enterpriseData.tokens,
+        ...enterpriseData.domains,
+        ...enterpriseData.dexes,
+      ].filter((item) => {
+        const createdAt = new Date(item.createdAt);
+        const now = new Date();
+        const hoursDiff = (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60);
+        return hoursDiff <= 24;
+      }).length
+    : 0;
+
   const stats = [
     {
-      label: 'Verified Users',
-      value: '1,247',
-      change: '+12.3%',
-      icon: Users,
-      color: 'teal',
-    },
-    {
-      label: '24h Volume',
-      value: '€2.4M',
-      change: '+8.7%',
-      icon: TrendingUp,
-      color: 'amber',
-    },
-    {
-      label: 'Active Domains',
-      value: '3',
-      change: '+1',
-      icon: Activity,
-      color: 'blue',
-    },
-    {
-      label: 'Total Assets',
-      value: '5',
-      change: '+2',
+      label: 'Total Tokens',
+      value: totalTokens.toString(),
+      change: recentActivityCount > 0 ? `+${recentActivityCount}` : '0',
       icon: Coins,
       color: 'purple',
     },
+    {
+      label: 'Active Domains',
+      value: totalDomains.toString(),
+      change: totalDomains > 0 ? 'Active' : 'None',
+      icon: Globe,
+      color: 'blue',
+    },
+    {
+      label: 'Permissioned DEXes',
+      value: totalDEXes.toString(),
+      change: totalDEXes > 0 ? 'Active' : 'None',
+      icon: Activity,
+      color: 'teal',
+    },
+    {
+      label: 'Total Assets',
+      value: totalTokens.toString(),
+      change: totalTokens > 0 ? 'Issued' : 'None',
+      icon: TrendingUp,
+      color: 'amber',
+    },
   ];
 
-  const recentActions = [
-    {
-      id: '1',
-      type: 'Credential Issued',
-      user: 'rKLpjpCoXgLQQYQyj3W8FGfKmY8gBqvGK5',
-      policy: 'MiCA Compliance',
-      timestamp: '2 minutes ago',
-      hash: '8F7E6D5C4B3A2B1A',
-    },
-    {
-      id: '2',
-      type: 'Wallet Frozen',
-      user: 'rN4h7WJmn5qDtG8PqCvXbUkL3pF9sT2Hx7',
-      policy: 'FINMA Policy',
-      timestamp: '15 minutes ago',
-      hash: '1A2B3C4D5E6F7G8H',
-    },
-    {
-      id: '3',
-      type: 'Token Clawback',
-      user: 'rPQr8sT9uV0wX1yZ2aB3cD4eF5gH6iJ7kL',
-      policy: 'MiCA Compliance',
-      timestamp: '1 hour ago',
-      hash: '9I8H7G6F5E4D3C2B',
-    },
-    {
-      id: '4',
-      type: 'Credential Revoked',
-      user: 'rMnOpQrStUvWxYzAbCdEfGhIjKlMnOpQr',
-      policy: 'Custom Policy',
-      timestamp: '3 hours ago',
-      hash: 'A1B2C3D4E5F6G7H8',
-    },
-  ];
+  // Build recent actions from enterprise data
+  const recentActions = enterpriseData
+    ? [
+        ...enterpriseData.tokens.map((token) => ({
+          id: token.id,
+          type: 'Token Created',
+          name: token.name,
+          code: token.code,
+          timestamp: formatTimeAgo(token.createdAt),
+          hash: token.transactionHashes?.[0]?.substring(0, 16) || 'N/A',
+        })),
+        ...enterpriseData.domains.map((domain) => ({
+          id: domain.id,
+          type: 'Domain Created',
+          name: domain.domainName,
+          code: domain.domainId.substring(0, 8),
+          timestamp: formatTimeAgo(domain.createdAt),
+          hash: domain.transactionHash?.substring(0, 16) || 'N/A',
+        })),
+        ...enterpriseData.dexes.map((dex) => ({
+          id: dex.id,
+          type: 'DEX Created',
+          name: dex.dexName,
+          code: dex.dexId.substring(0, 8),
+          timestamp: formatTimeAgo(dex.createdAt),
+          hash: dex.transactionHash?.substring(0, 16) || 'N/A',
+        })),
+      ]
+        .sort((a, b) => {
+          const timeA = new Date(
+            enterpriseData.tokens.find((t) => t.id === a.id)?.createdAt ||
+            enterpriseData.domains.find((d) => d.id === a.id)?.createdAt ||
+            enterpriseData.dexes.find((d) => d.id === a.id)?.createdAt ||
+            ''
+          ).getTime();
+          const timeB = new Date(
+            enterpriseData.tokens.find((t) => t.id === b.id)?.createdAt ||
+            enterpriseData.domains.find((d) => d.id === b.id)?.createdAt ||
+            enterpriseData.dexes.find((d) => d.id === b.id)?.createdAt ||
+            ''
+          ).getTime();
+          return timeB - timeA;
+        })
+        .slice(0, 10)
+    : [];
+
+  function formatTimeAgo(dateString: string): string {
+    const date = new Date(dateString);
+    const now = new Date();
+    const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+    if (seconds < 60) return `${seconds} seconds ago`;
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes} minutes ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours} hours ago`;
+    const days = Math.floor(hours / 24);
+    return `${days} days ago`;
+  }
 
   const alerts = [
     {
@@ -177,44 +231,50 @@ export function DashboardOverview({ companyName }: DashboardOverviewProps) {
           <TableHeader>
             <TableRow className="border-slate-800 hover:bg-transparent">
               <TableHead className="text-slate-400">Action Type</TableHead>
-              <TableHead className="text-slate-400">User</TableHead>
-              <TableHead className="text-slate-400">Policy</TableHead>
+              <TableHead className="text-slate-400">Name</TableHead>
+              <TableHead className="text-slate-400">Code/ID</TableHead>
               <TableHead className="text-slate-400">Time</TableHead>
               <TableHead className="text-slate-400">Hash</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {recentActions.map((action) => (
-              <TableRow key={action.id} className="border-slate-800 hover:bg-slate-800/30">
-                <TableCell>
-                  <Badge
-                    variant="outline"
-                    className={
-                      action.type === 'Credential Issued'
-                        ? 'border-teal-500/30 text-teal-400'
-                        : action.type === 'Wallet Frozen'
-                        ? 'border-cyan-500/30 text-cyan-400'
-                        : action.type === 'Token Clawback'
-                        ? 'border-purple-500/30 text-purple-400'
-                        : 'border-red-500/30 text-red-400'
-                    }
-                  >
-                    {action.type}
-                  </Badge>
+            {recentActions.length > 0 ? (
+              recentActions.map((action) => (
+                <TableRow key={action.id} className="border-slate-800 hover:bg-slate-800/30">
+                  <TableCell>
+                    <Badge
+                      variant="outline"
+                      className={
+                        action.type === 'Token Created'
+                          ? 'border-purple-500/30 text-purple-400'
+                          : action.type === 'Domain Created'
+                          ? 'border-blue-500/30 text-blue-400'
+                          : action.type === 'DEX Created'
+                          ? 'border-teal-500/30 text-teal-400'
+                          : 'border-slate-500/30 text-slate-400'
+                      }
+                    >
+                      {action.type}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-slate-300">{action.name}</TableCell>
+                  <TableCell className="font-mono text-sm text-slate-400">{action.code}</TableCell>
+                  <TableCell className="text-slate-400 text-sm">
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-3 h-3" />
+                      {action.timestamp}
+                    </div>
+                  </TableCell>
+                  <TableCell className="font-mono text-xs text-slate-500">{action.hash}</TableCell>
+                </TableRow>
+              ))
+            ) : (
+              <TableRow className="border-slate-800">
+                <TableCell colSpan={5} className="text-center text-slate-400 py-8">
+                  No recent activity
                 </TableCell>
-                <TableCell className="font-mono text-sm text-slate-300 max-w-[200px] truncate">
-                  {action.user}
-                </TableCell>
-                <TableCell className="text-slate-300">{action.policy}</TableCell>
-                <TableCell className="text-slate-400 text-sm">
-                  <div className="flex items-center gap-2">
-                    <Clock className="w-3 h-3" />
-                    {action.timestamp}
-                  </div>
-                </TableCell>
-                <TableCell className="font-mono text-xs text-slate-500">{action.hash}</TableCell>
               </TableRow>
-            ))}
+            )}
           </TableBody>
         </Table>
       </Card>

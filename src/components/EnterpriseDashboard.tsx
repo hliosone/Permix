@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { PolicyBuilder } from './PolicyBuilder';
 import { DomainCreator } from './DomainCreator';
 import { AssetCreator } from './AssetCreator';
@@ -14,6 +14,7 @@ import {
   Wallet
 } from 'lucide-react';
 import { Button } from './ui/button';
+import { initializeEnterprise, type EnterpriseData } from '../services/enterprise-storage';
 
 interface EnterpriseDashboardProps {
   data: {
@@ -27,6 +28,13 @@ type Tab = 'dashboard' | 'policies' | 'domains' | 'assets' | 'delegation';
 
 export function EnterpriseDashboard({ data, onLogout }: EnterpriseDashboardProps) {
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
+  const [enterpriseData, setEnterpriseData] = useState<EnterpriseData | null>(null);
+
+  // Initialize enterprise data on mount
+  useEffect(() => {
+    const enterprise = initializeEnterprise(data.walletAddress, data.companyName);
+    setEnterpriseData(enterprise);
+  }, [data.walletAddress, data.companyName]);
 
   const tabs = [
     { id: 'dashboard' as Tab, label: 'Dashboard', icon: LayoutDashboard },
@@ -96,10 +104,15 @@ export function EnterpriseDashboard({ data, onLogout }: EnterpriseDashboardProps
         {/* Main Content */}
         <div className="flex-1 overflow-auto">
           <div className="p-8">
-            {activeTab === 'dashboard' && <DashboardOverview companyName={data.companyName} />}
+            {activeTab === 'dashboard' && (
+              <DashboardOverview 
+                companyName={data.companyName} 
+                walletAddress={data.walletAddress}
+              />
+            )}
             {activeTab === 'policies' && <PolicyBuilder />}
-            {activeTab === 'domains' && <DomainCreator />}
-            {activeTab === 'assets' && <AssetCreator />}
+            {activeTab === 'domains' && <DomainCreator walletAddress={data.walletAddress} />}
+            {activeTab === 'assets' && <AssetCreator walletAddress={data.walletAddress} />}
             {activeTab === 'delegation' && <PermissionDelegation />}
           </div>
         </div>

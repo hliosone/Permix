@@ -6,7 +6,7 @@ import { Label } from './ui/label';
 import { Card } from './ui/card';
 import { Checkbox } from './ui/checkbox';
 import { Badge } from './ui/badge';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 interface Delegation {
   id: string;

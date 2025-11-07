@@ -8,7 +8,7 @@ import { Card } from './ui/card';
 import { Switch } from './ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { Badge } from './ui/badge';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 interface TradingPair {
   base: string;
