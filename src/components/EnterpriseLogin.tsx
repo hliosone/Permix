@@ -59,31 +59,44 @@ export function EnterpriseLogin({ onAuth, onBack }) {
               <Label className="text-slate-300">XRPL Wallet</Label>
 
               {/* ✅ This replaces your custom buttons */}
-              <xrpl-wallet-connector
-                ref={connectorRef}
-                id="wallet-connector"
-                primary-wallet="crossmark"
-              ></xrpl-wallet-connector>
+              <div className="flex items-center gap-3">
+                <xrpl-wallet-connector
+                  ref={connectorRef}
+                  id="wallet-connector"
+                  primary-wallet="crossmark"
+                ></xrpl-wallet-connector>
 
-              {walletConnected && (
-                <div className="flex items-center gap-3 p-3 bg-slate-800/50 border border-teal-500/30 rounded-lg">
-                  <span className="text-slate-300 text-sm font-mono flex-1 truncate">
-                    {walletAddress}
-                  </span>
+                {walletConnected && (
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
-                    onClick={() => {
-                      disconnect();
-                      setWalletConnected(false);
+                    onClick={async () => {
+                      try {
+                        await disconnect(); // ✅ wait for Crossmark to disconnect fully
+                      } catch (e) {
+                        console.warn("Disconnect error:", e);
+                      } finally {
+                        // ✅ then immediately reset UI
+                        setWalletConnected(false);
+                        setWalletAddress("");
+                      }
                     }}
-                    className="text-slate-400 hover:text-slate-200"
+                    className="
+                      border border-slate-600 
+                      text-slate-300 
+                      bg-slate-800/40 
+                      hover:bg-slate-700/40 
+                      hover:opacity-70 
+                      hover:text-white 
+                      transition-all 
+                      duration-200
+                    "
                   >
                     Disconnect
                   </Button>
-                </div>
-              )}
+                )}
+              </div>
             </div>
 
             {walletConnected && (
@@ -104,6 +117,7 @@ export function EnterpriseLogin({ onAuth, onBack }) {
                 </div>
 
                 {/* ✅ New button to open the PaymentForm */}
+                {/*
                 <Button
                   type="button"
                   onClick={() => setShowPaymentForm((prev) => !prev)}
@@ -111,13 +125,15 @@ export function EnterpriseLogin({ onAuth, onBack }) {
                 >
                   {showPaymentForm ? "Hide Payment Form" : "Trigger Signature"}
                 </Button>
+                */}
 
                 {/* ✅ Show PaymentForm if toggled */}
+                {/*
                 {showPaymentForm && walletConnected && (
                   <div className="mt-4 p-4 border border-teal-700/40 rounded-lg bg-slate-800/40">
                     <PaymentForm walletManager={walletManager} />
                   </div>
-                )}
+                )}*/}
 
                 <Button
                   type="submit"

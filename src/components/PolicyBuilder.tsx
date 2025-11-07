@@ -8,6 +8,7 @@ import { Card } from './ui/card';
 import { Switch } from './ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { toast } from 'sonner@2.0.3';
+import { usePolicies } from "../context/PolicyContext";
 
 interface Rule {
   id: string;
@@ -27,7 +28,7 @@ interface Policy {
 }
 
 export function PolicyBuilder() {
-  const [policies, setPolicies] = useState<Policy[]>([
+  /*const [policies, setPolicies] = useState<Policy[]>([
     {
       id: '1',
       name: 'MiCA Compliance Policy',
@@ -39,7 +40,8 @@ export function PolicyBuilder() {
       requireLastName: true,
       createdAt: new Date().toISOString(),
     },
-  ]);
+  ]);*/
+  const { policies, setPolicies } = usePolicies();
   const [isCreating, setIsCreating] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [currentPolicy, setCurrentPolicy] = useState<{
@@ -54,8 +56,8 @@ export function PolicyBuilder() {
     requireLastName: false,
   });
 
-  const fields = ['Age', 'Country', 'Residency', 'KYC Level', 'Accredited Investor', 'Income'];
-  const operators = ['=', '≠', '≥', '≤', '>', '<', 'IN', 'NOT IN'];
+  const fields = ['Age', 'Country'];
+  const operators = ['=', '≥'];
 
   const addRule = () => {
     const newRule: Rule = {
@@ -229,14 +231,14 @@ export function PolicyBuilder() {
                       {index > 0 && (
                         <Select
                           value={rule.logic}
-                          onValueChange={(value: 'AND' | 'OR') => updateRule(rule.id, { logic: value })}
+                          onValueChange={(value: 'AND', {/*| 'OR'*/}) => updateRule(rule.id, { logic: value })}
                         >
                           <SelectTrigger className="w-20 bg-slate-800/50 border-slate-700">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent className="bg-slate-800 border-slate-700">
                             <SelectItem value="AND">AND</SelectItem>
-                            <SelectItem value="OR">OR</SelectItem>
+                            {/*<SelectItem value="OR">OR</SelectItem>*/}
                           </SelectContent>
                         </Select>
                       )}
@@ -325,7 +327,7 @@ export function PolicyBuilder() {
                 className="flex-1 bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700 text-white"
               >
                 <Zap className="w-4 h-4 mr-2" />
-                Create & Issue Credential
+                Create Policy
               </Button>
             </div>
           </div>
