@@ -10,20 +10,29 @@ import { Client } from 'xrpl';
  * Domain configuration interface
  */
 export interface DomainConfig {
-  domainName: string;
-  requiredCredentials?: string[];
-  description?: string;
+  domainName?: string; // Optional, for reference only
+  acceptedCredentials?: Array<{
+    Credential: {
+      Issuer: string;
+      CredentialType: string; // Hex-encoded credential type
+    };
+  }>;
+  description?: string; // Optional, for reference only
 }
 
 /**
- * DomainCreate transaction type (XLS-0080 spec structure)
+ * PermissionedDomainSet transaction type (XLS-0080 spec structure)
+ * Based on working pattern from domainswork.ts
  */
-export interface DomainCreate {
-  TransactionType: 'DomainCreate';
+export interface PermissionedDomainSet {
+  TransactionType: 'PermissionedDomainSet';
   Account: string;
-  DomainName: string;
-  RequiredCredentials?: string[];
-  DomainMetadata?: Record<string, any>;
+  AcceptedCredentials?: Array<{
+    Credential: {
+      Issuer: string;
+      CredentialType: string; // Hex-encoded
+    };
+  }>;
 }
 
 /**
@@ -39,7 +48,8 @@ export interface DomainJoin {
 /**
  * Create a permissioned domain
  * Returns prepared transaction payload (ready to be signed and submitted)
- * Based on XLS-0080 specification
+ * Based on XLS-0080 specification using PermissionedDomainSet transaction
+ * Following working pattern from domainswork.ts
  * 
  * @param client - XRPL client
  * @param creatorAddress - Address creating the domain
@@ -51,39 +61,35 @@ export async function createPermissionedDomain(
   config: DomainConfig
 ): Promise<{
   success: boolean;
-  transaction?: DomainCreate;
+  transaction?: PermissionedDomainSet;
   error?: string;
 }> {
   try {
     console.log('=== Preparing Permissioned Domain Creation ===');
-    console.log('Domain Name:', config.domainName);
-    console.log('Required Credentials:', config.requiredCredentials);
+    console.log('Domain Name:', config.domainName || 'N/A');
+    console.log('Accepted Credentials:', config.acceptedCredentials);
     console.log('Creator:', creatorAddress);
 
-    // Build DomainCreate transaction according to XLS-0080 spec
-    const domainCreate: DomainCreate = {
-      TransactionType: 'DomainCreate',
+    // Build PermissionedDomainSet transaction following working pattern
+    const domainSet: PermissionedDomainSet = {
+      TransactionType: 'PermissionedDomainSet',
       Account: creatorAddress,
-      DomainName: config.domainName,
     };
 
-    if (config.requiredCredentials && config.requiredCredentials.length > 0) {
-      domainCreate.RequiredCredentials = config.requiredCredentials;
+    // Add accepted credentials if provided
+    if (config.acceptedCredentials && config.acceptedCredentials.length > 0) {
+      domainSet.AcceptedCredentials = config.acceptedCredentials;
     }
 
-    if (config.description) {
-      domainCreate.DomainMetadata = { description: config.description };
-    }
-
-    console.log('DomainCreate transaction:', domainCreate);
+    console.log('PermissionedDomainSet transaction:', domainSet);
 
     // Autofill the transaction
-    const prepared = await client.autofill(domainCreate as any);
-    console.log('DomainCreate transaction prepared:', prepared);
+    const prepared = await client.autofill(domainSet as any);
+    console.log('PermissionedDomainSet transaction prepared:', prepared);
 
     return {
       success: true,
-      transaction: prepared as DomainCreate,
+      transaction: prepared as PermissionedDomainSet,
     };
   } catch (error) {
     console.error('Error preparing permissioned domain creation:', error);
