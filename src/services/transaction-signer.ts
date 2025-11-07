@@ -38,6 +38,31 @@ export function getKYCUserWallet(): Wallet | null {
 }
 
 /**
+ * Get KYC User address from environment
+ */
+export function getKYCUserAddress(): string | null {
+  const env = (import.meta as any).env as { VITE_KYC_USER_ADDR?: string; VITE_KYC_USER_SEED?: string };
+  
+  // First try to get address directly
+  if (env.VITE_KYC_USER_ADDR) {
+    return env.VITE_KYC_USER_ADDR;
+  }
+  
+  // Fallback: derive address from seed if available
+  if (env.VITE_KYC_USER_SEED) {
+    try {
+      const wallet = Wallet.fromSeed(env.VITE_KYC_USER_SEED);
+      return wallet.address;
+    } catch (error) {
+      console.error('Error deriving address from seed:', error);
+      return null;
+    }
+  }
+  
+  return null;
+}
+
+/**
  * Get wallet from funded wallet storage (for issuer operations)
  */
 export function getIssuerWalletFromStorage(): Wallet | null {
@@ -57,8 +82,9 @@ export function getIssuerWalletFromStorage(): Wallet | null {
 
 /**
  * Sign and submit a single transaction
+ * Re-autofills the transaction right before submission to ensure fresh LastLedgerSequence
  * @param client - XRPL client
- * @param transaction - Prepared transaction
+ * @param transaction - Transaction (will be re-autofilled before signing)
  * @param wallet - Wallet to sign with
  */
 export async function signAndSubmitTransaction(
@@ -73,23 +99,38 @@ export async function signAndSubmitTransaction(
   try {
     console.log('Signing transaction:', transaction.TransactionType);
     
-    const signed = wallet.sign(transaction);
+    // Re-autofill right before signing to ensure fresh LastLedgerSequence
+    // This prevents tefPAST_SEQ errors when transactions are prepared in advance
+    const prepared = await client.autofill(transaction);
+    
+    const signed = wallet.sign(prepared);
     const result = await client.submitAndWait(signed.tx_blob);
     
     const hash = result.result.hash;
-    const engineResult = result.result.engine_result;
+    // Check transaction result from meta field
+    const resultAny = result.result as any;
+    const transactionResult = resultAny.meta?.TransactionResult;
+    const engineResult = resultAny.engine_result;
     
-    if (engineResult === 'tesSUCCESS') {
+    // If submitAndWait doesn't throw, transaction was likely successful
+    // Check meta.TransactionResult or engine_result if available
+    const isSuccess = 
+      transactionResult === 'tesSUCCESS' || 
+      engineResult === 'tesSUCCESS' ||
+      (hash && !transactionResult && !engineResult); // If we have a hash and no error indicators, assume success
+    
+    if (isSuccess) {
       console.log('Transaction successful:', hash);
       return {
         success: true,
         hash,
       };
     } else {
-      console.error('Transaction failed:', engineResult);
+      const errorMsg = transactionResult || engineResult || 'Unknown error';
+      console.error('Transaction failed:', errorMsg);
       return {
         success: false,
-        error: `Transaction failed: ${engineResult}`,
+        error: `Transaction failed: ${errorMsg}`,
       };
     }
   } catch (error) {
