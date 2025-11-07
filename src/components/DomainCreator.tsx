@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Globe, Plus, TrendingUp, Check } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Globe, Plus, TrendingUp, Check, Loader2 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -9,6 +9,14 @@ import { Switch } from './ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { Badge } from './ui/badge';
 import { toast } from 'sonner';
+import {
+  createXRPLClient,
+  disconnectXRPLClient,
+} from '../services/xrpl-setup';
+import { createPermissionedDomain } from '../services/permissioned-domains';
+import { signAndSubmitTransaction, getWalletForSigning } from '../services/transaction-signer';
+import { addEnterpriseDomain, getEnterpriseData } from '../services/enterprise-storage';
+import type { Client } from 'xrpl';
 
 interface TradingPair {
   base: string;
@@ -29,32 +37,43 @@ interface Domain {
   };
 }
 
-export function DomainCreator() {
-  const [domains, setDomains] = useState<Domain[]>([
-    {
-      id: '1',
-      domainId: 'DOM-7F3E9A2B',
-      policyName: 'MiCA Compliance Policy',
-      tradingPairs: [
-        { base: 'EURC', quote: 'RLUSD' },
-        { base: 'EURX', quote: 'XRP' },
-      ],
-      hybridOffers: true,
-      createdAt: new Date().toISOString(),
-      stats: {
-        users: 127,
-        volume24h: '€234,567',
-        trades: 1843,
-      },
-    },
-  ]);
+interface DomainCreatorProps {
+  walletAddress: string;
+}
+
+export function DomainCreator({ walletAddress }: DomainCreatorProps) {
+  const [domains, setDomains] = useState<Domain[]>([]);
   const [isCreating, setIsCreating] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [newDomain, setNewDomain] = useState({
+    domainName: '',
     policyName: '',
     tradingPairs: [] as TradingPair[],
     hybridOffers: false,
+    requiredCredentials: [] as string[],
   });
   const [currentPair, setCurrentPair] = useState({ base: '', quote: '' });
+
+  // Load domains from enterprise storage
+  useEffect(() => {
+    const enterpriseData = getEnterpriseData(walletAddress);
+    if (enterpriseData && enterpriseData.domains.length > 0) {
+      const loadedDomains: Domain[] = enterpriseData.domains.map((domain) => ({
+        id: domain.id,
+        domainId: domain.domainId,
+        policyName: domain.description || 'Custom Policy',
+        tradingPairs: [], // Would need to fetch from DEX or store separately
+        hybridOffers: false,
+        createdAt: domain.createdAt,
+        stats: {
+          users: 0,
+          volume24h: '€0',
+          trades: 0,
+        },
+      }));
+      setDomains(loadedDomains);
+    }
+  }, [walletAddress]);
 
   const availablePolicies = ['MiCA Compliance Policy', 'FINMA Policy', 'Custom Policy'];
   const availableAssets = ['EURC', 'EURX', 'USDC', 'RLUSD', 'XRP', 'BTC', 'ETH'];
@@ -82,36 +101,114 @@ export function DomainCreator() {
     });
   };
 
-  const createDomain = () => {
+  const createDomain = async () => {
+    if (!newDomain.domainName.trim()) {
+      toast.error('Please enter a domain name');
+      return;
+    }
     if (!newDomain.policyName) {
       toast.error('Please select a policy');
       return;
     }
-    if (newDomain.tradingPairs.length === 0) {
-      toast.error('Please add at least one trading pair');
-      return;
+
+    setIsSubmitting(true);
+    let client: Client | null = null;
+
+    try {
+      // 1. Connect to XRPL
+      toast.loading('Connecting to XRPL...', { id: 'domain-connect' });
+      client = await createXRPLClient();
+      toast.success('Connected to XRPL', { id: 'domain-connect' });
+
+      // 2. Get wallet for signing
+      const wallet = getWalletForSigning('issuer');
+      if (!wallet) {
+        throw new Error('Wallet not available. Please check environment variables.');
+      }
+
+      // 3. Create permissioned domain
+      toast.loading('Creating permissioned domain...', { id: 'create-domain' });
+      const result = await createPermissionedDomain(
+        client,
+        wallet.address,
+        {
+          domainName: newDomain.domainName,
+          requiredCredentials: newDomain.requiredCredentials.length > 0 
+            ? newDomain.requiredCredentials 
+            : undefined,
+          description: newDomain.policyName,
+        }
+      );
+
+      if (result.success && result.transaction) {
+        // 4. Sign and submit transaction
+        toast.loading('Signing and submitting transaction...', { id: 'sign-domain' });
+        const submitResult = await signAndSubmitTransaction(client, result.transaction, wallet);
+
+        if (!submitResult.success) {
+          throw new Error(submitResult.error || 'Failed to submit transaction');
+        }
+
+        // 5. Save domain to enterprise storage
+        // Note: domainId would come from the transaction result in production
+        const domainId = `domain_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+        const savedDomain = addEnterpriseDomain(walletAddress, {
+          domainId,
+          domainName: newDomain.domainName,
+          creator: wallet.address,
+          requiredCredentials: newDomain.requiredCredentials,
+          description: newDomain.policyName,
+          transactionHash: submitResult.hash,
+        });
+
+        // 6. Add domain to local state
+        const domain: Domain = {
+          id: savedDomain.id,
+          domainId,
+          policyName: newDomain.policyName,
+          tradingPairs: newDomain.tradingPairs,
+          hybridOffers: newDomain.hybridOffers,
+          createdAt: savedDomain.createdAt,
+          stats: {
+            users: 0,
+            volume24h: '€0',
+            trades: 0,
+          },
+        };
+
+        setDomains([...domains, domain]);
+        setNewDomain({
+          domainName: '',
+          policyName: '',
+          tradingPairs: [],
+          hybridOffers: false,
+          requiredCredentials: [],
+        });
+        setIsCreating(false);
+
+        toast.success(
+          `Domain created successfully! Transaction: ${submitResult.hash?.substring(0, 8)}...`,
+          { id: 'sign-domain', duration: 5000 }
+        );
+      } else {
+        throw new Error(result.error || 'Failed to create domain');
+      }
+    } catch (error) {
+      console.error('Error creating domain:', error);
+      toast.error(
+        `Failed to create domain: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        { id: 'create-domain' }
+      );
+    } finally {
+      if (client) {
+        try {
+          await disconnectXRPLClient(client);
+        } catch (error) {
+          console.error('Error disconnecting from XRPL:', error);
+        }
+      }
+      setIsSubmitting(false);
     }
-
-    const domain: Domain = {
-      id: Date.now().toString(),
-      domainId: `DOM-${Math.random().toString(16).substr(2, 8).toUpperCase()}`,
-      ...newDomain,
-      createdAt: new Date().toISOString(),
-      stats: {
-        users: 0,
-        volume24h: '€0',
-        trades: 0,
-      },
-    };
-
-    setDomains([...domains, domain]);
-    setNewDomain({
-      policyName: '',
-      tradingPairs: [],
-      hybridOffers: false,
-    });
-    setIsCreating(false);
-    toast.success('Permissioned domain created successfully!');
   };
 
   return (
@@ -198,6 +295,17 @@ export function DomainCreator() {
           </DialogHeader>
 
           <div className="space-y-6">
+            {/* Domain Name */}
+            <div className="space-y-2">
+              <Label>Domain Name</Label>
+              <Input
+                placeholder="e.g., MiCA Trading Domain"
+                value={newDomain.domainName}
+                onChange={(e) => setNewDomain({ ...newDomain, domainName: e.target.value })}
+                className="bg-slate-800/50 border-slate-700"
+              />
+            </div>
+
             {/* Policy Selection */}
             <div className="space-y-2">
               <Label>Linked Policy</Label>
@@ -321,10 +429,20 @@ export function DomainCreator() {
               </Button>
               <Button
                 onClick={createDomain}
-                className="flex-1 bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700 text-white"
+                disabled={isSubmitting}
+                className="flex-1 bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700 text-white disabled:opacity-50"
               >
-                <Check className="w-4 h-4 mr-2" />
-                Create Domain
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-4 h-4 mr-2" />
+                    Create Domain
+                  </>
+                )}
               </Button>
             </div>
           </div>

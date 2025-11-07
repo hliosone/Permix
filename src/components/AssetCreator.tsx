@@ -15,8 +15,9 @@ import {
   getFundedWallet,
   type FundedWallet,
 } from '../services/xrpl-setup';
-import { createIOUToken } from '../services/iou-creator';
+import { createIOUToken, sendTokenToNewWallet } from '../services/iou-creator';
 import { addEnterpriseToken, getEnterpriseData } from '../services/enterprise-storage';
+import { signAndSubmitTransaction, signAndSubmitTransactions, getWalletForSigning } from '../services/transaction-signer';
 import type { Client } from 'xrpl';
 import { useEffect } from 'react';
 
@@ -164,8 +165,17 @@ export function AssetCreator({ walletAddress }: AssetCreatorProps) {
         newAsset.flags
       );
 
-      if (result.success) {
-        // 4. Save token to enterprise storage
+      if (result.success && result.transactions.length > 0) {
+        // 4. Sign and submit all transactions
+        toast.loading(`Signing and submitting ${result.transactions.length} transaction(s)...`, { id: 'sign-tx' });
+        const signWallet = getWalletForSigning('issuer') || wallet;
+        const submitResult = await signAndSubmitTransactions(client, result.transactions, signWallet);
+        
+        if (!submitResult.success) {
+          throw new Error(`Failed to submit transactions: ${submitResult.errors.join(', ')}`);
+        }
+
+        // 5. Save token to enterprise storage
         const savedToken = addEnterpriseToken(walletAddress, {
           currency: result.currency,
           issuer: result.issuer,
@@ -173,10 +183,10 @@ export function AssetCreator({ walletAddress }: AssetCreatorProps) {
           code: newAsset.code,
           description: newAsset.description,
           flags: newAsset.flags,
-          transactionHashes: result.transactions.map((tx: any) => tx.hash || '').filter(Boolean),
+          transactionHashes: submitResult.hashes,
         });
 
-        // 5. Add asset to local state
+        // 6. Add asset to local state
         const asset: Asset = {
           id: savedToken.id,
           ...newAsset,
@@ -201,12 +211,12 @@ export function AssetCreator({ walletAddress }: AssetCreatorProps) {
         setIsCreating(false);
 
         // Show success with transaction hashes
-        const hashList = result.transactions.length > 0 
-          ? `${result.transactions.length} transaction(s) prepared`
+        const hashList = submitResult.hashes.length > 0 
+          ? submitResult.hashes.map(h => h.substring(0, 8) + '...').join(', ')
           : 'N/A';
         toast.success(
-          `Asset created successfully! ${hashList}`,
-          { id: 'create-token', duration: 5000 }
+          `Asset created successfully! Transaction(s): ${hashList}`,
+          { id: 'sign-tx', duration: 5000 }
         );
       } else {
         throw new Error(result.error || 'Failed to create IOU token');

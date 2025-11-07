@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { TrendingUp, TrendingDown, User, RefreshCw, ArrowRight } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { TrendingUp, TrendingDown, User, RefreshCw, ArrowRight, Loader2 } from 'lucide-react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -15,6 +15,13 @@ import {
   TableRow,
 } from './ui/table';
 import { toast } from 'sonner';
+import {
+  createXRPLClient,
+  disconnectXRPLClient,
+} from '../services/xrpl-setup';
+import { createDEXOrder, getOrderBook, type TradingPair } from '../services/permissioned-dex';
+import { signAndSubmitTransaction, getWalletForSigning } from '../services/transaction-signer';
+import type { Client } from 'xrpl';
 
 interface PermissionedDEXProps {
   domain: {
@@ -30,6 +37,11 @@ export function PermissionedDEX({ domain, onViewPortfolio }: PermissionedDEXProp
   const [orderType, setOrderType] = useState<'buy' | 'sell'>('buy');
   const [amount, setAmount] = useState('');
   const [price, setPrice] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [orderBookData, setOrderBookData] = useState<{
+    buys: any[];
+    sells: any[];
+  }>({ buys: [], sells: [] });
 
   const tradingPairs = [
     { pair: 'EURC/RLUSD', price: '1.0234', change: '+0.12%', volume: '€234,567' },
@@ -62,14 +74,99 @@ export function PermissionedDEX({ domain, onViewPortfolio }: PermissionedDEXProp
     { price: '1.0236', amount: '456.78', time: '14:23:30', type: 'sell' },
   ];
 
-  const handlePlaceOrder = () => {
+  // Parse trading pair from string (e.g., "EURC/RLUSD")
+  const parseTradingPair = (pairString: string): TradingPair | null => {
+    const [base, quote] = pairString.split('/');
+    if (!base || !quote) return null;
+    
+    // For now, we'll use mock issuer addresses
+    // In production, these would come from the actual token data
+    return {
+      baseCurrency: base,
+      baseIssuer: 'rIssuerAddress...', // Would need to fetch from token data
+      quoteCurrency: quote === 'XRP' ? 'XRP' : quote,
+      quoteIssuer: quote === 'XRP' ? undefined : 'rIssuerAddress...',
+    };
+  };
+
+  const handlePlaceOrder = async () => {
     if (!amount || !price) {
       toast.error('Please enter amount and price');
       return;
     }
-    toast.success(`${orderType === 'buy' ? 'Buy' : 'Sell'} order placed successfully!`);
-    setAmount('');
-    setPrice('');
+
+    const pair = parseTradingPair(selectedPair);
+    if (!pair) {
+      toast.error('Invalid trading pair');
+      return;
+    }
+
+    setIsSubmitting(true);
+    let client: Client | null = null;
+
+    try {
+      // 1. Connect to XRPL
+      toast.loading('Connecting to XRPL...', { id: 'order-connect' });
+      client = await createXRPLClient();
+      toast.success('Connected to XRPL', { id: 'order-connect' });
+
+      // 2. Get wallet for signing
+      const wallet = getWalletForSigning('user');
+      if (!wallet) {
+        throw new Error('Wallet not available. Please check environment variables.');
+      }
+
+      // 3. Create DEX order
+      toast.loading('Creating order...', { id: 'create-order' });
+      const result = await createDEXOrder(
+        client,
+        wallet.address,
+        domain.id, // Domain ID
+        pair,
+        orderType,
+        amount,
+        price
+      );
+
+      if (result.success && result.transaction) {
+        // 4. Sign and submit transaction
+        toast.loading('Signing and submitting order...', { id: 'sign-order' });
+        const submitResult = await signAndSubmitTransaction(client, result.transaction, wallet);
+
+        if (!submitResult.success) {
+          throw new Error(submitResult.error || 'Failed to submit order');
+        }
+
+        toast.success(
+          `${orderType === 'buy' ? 'Buy' : 'Sell'} order placed successfully! Transaction: ${submitResult.hash?.substring(0, 8)}...`,
+          { id: 'sign-order', duration: 5000 }
+        );
+
+        setAmount('');
+        setPrice('');
+
+        // Refresh order book
+        const orderBook = await getOrderBook(client, pair);
+        setOrderBookData(orderBook);
+      } else {
+        throw new Error(result.error || 'Failed to create order');
+      }
+    } catch (error) {
+      console.error('Error placing order:', error);
+      toast.error(
+        `Failed to place order: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        { id: 'create-order' }
+      );
+    } finally {
+      if (client) {
+        try {
+          await disconnectXRPLClient(client);
+        } catch (error) {
+          console.error('Error disconnecting from XRPL:', error);
+        }
+      }
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -221,9 +318,17 @@ export function PermissionedDEX({ domain, onViewPortfolio }: PermissionedDEXProp
 
               <Button
                 onClick={handlePlaceOrder}
-                className="w-full bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700 text-white"
+                disabled={isSubmitting}
+                className="w-full bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700 text-white disabled:opacity-50"
               >
-                Place Buy Order
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Placing Order...
+                  </>
+                ) : (
+                  'Place Buy Order'
+                )}
               </Button>
             </TabsContent>
 
@@ -267,9 +372,17 @@ export function PermissionedDEX({ domain, onViewPortfolio }: PermissionedDEXProp
 
               <Button
                 onClick={handlePlaceOrder}
-                className="w-full bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white"
+                disabled={isSubmitting}
+                className="w-full bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white disabled:opacity-50"
               >
-                Place Sell Order
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Placing Order...
+                  </>
+                ) : (
+                  'Place Sell Order'
+                )}
               </Button>
             </TabsContent>
           </Tabs>
