@@ -12,6 +12,7 @@ import { toast } from 'sonner@2.0.3';
 import { usePolicies } from "../context/PolicyContext";
 import { useDomains } from "../context/DomainContext";
 import { Buffer } from "buffer";
+import { Client, Wallet } from "xrpl";
 
 
 
@@ -329,8 +330,10 @@ export function DomainCreator({ walletManager }: DomainCreatorProps) {
                       return;
                     }
 
+
                     // Build the XRPL transaction
                     const domainCreatorAddress = walletManager.account.address;
+
                     const tx = {
                       TransactionType: "PermissionedDomainSet",
                       Account: domainCreatorAddress,
@@ -344,19 +347,27 @@ export function DomainCreator({ walletManager }: DomainCreatorProps) {
                       ],
                     };
 
-                    try {
-                      console.log("🔁 Submitting TX:", tx);
-                      const result = await walletManager.signAndSubmit(tx);
-                      console.log("✅ XRPL TX result:", result);
+                    const client = new Client('wss://s.devnet.rippletest.net:51233');
+                    await client.connect();
 
-                      toast.success("Domain successfully created on XRPL!");
+                    // WE DID THIS because Crossmark doesn't support for the moment the PermissionDomainSet transaction
+                    // TODO: remplace la seed dans fromSeed par une variable de seed du wallet d'entreprise
+                    const permissionedDelegateMockWallet =
+                        Wallet.fromSeed("sEdTQ8FaY5rW8rMGZep3i1dZXavMBVc"); // KYC Issuer
 
-                      // Update your frontend UI state
-                      createDomain();
-                    } catch (e) {
-                      console.error("💥 Error creating domain:", e);
-                      toast.error("Failed to create domain on XRPL");
-                    }
+                        try {
+                            const response = await client.submitAndWait(tx, {
+                                autofill: true,
+                                wallet: permissionedDelegateMockWallet,
+                            });
+
+                            return response.result // si cest tesSUCCESS cest good sinon autre cest non
+
+                        } catch (error) {
+                            //console.log( Error: ${error.message});
+                            await client.disconnect();
+                        }
+                    await client.disconnect();
                   }}
                   className="flex-1 bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700 text-white"
                 >
