@@ -290,8 +290,12 @@ export function VerificationFlow({
     };
   }, [verificationId]);
 
+  const handleAcceptCredential_fin = () => {
+    onComplete();
+  };
+
   // ✅ Envoi de la TX CredentialCreate via walletManager (ultra simple)
-  const handleAcceptCredential = async () => {
+  const handleAcceptCredential2 = async () => {
     if (!walletManager || !walletManager.account) {
       toast.error("Wallet manager not available");
       return;
@@ -338,6 +342,7 @@ export function VerificationFlow({
 
     try {
       const result = await walletManager.signAndSubmit(txUserAcceptCred);
+      console.log("✅ XRPL TX result:", result);
     } catch (err: any) {
       console.error("Error issuing credential:", err);
     }
@@ -384,6 +389,62 @@ export function VerificationFlow({
     await client.disconnect();
   };
 
+  const handleAcceptCredential = async () => {
+    console.log(">>> handleAcceptCredential triggered");
+    console.log("Seed phrase value:", seedPhrase);
+    console.log("Seed phrase length:", seedPhrase.length);
+    console.log("First character:", seedPhrase[0]);
+
+    try {
+      if (!walletManager || !walletManager.account) {
+        console.warn("walletManager missing");
+        toast.error("Wallet manager not available");
+        return;
+      }
+
+      setIsSubmitting(true);
+      console.log("Seed phrase in VF:", seedPhrase);
+
+      // checkpoint 1
+      console.log("Creating Wallet...");
+      const permissionedDelegateMockWallet = Wallet.fromSeed(seedPhrase);
+      console.log("Wallet created:", permissionedDelegateMockWallet.address);
+
+      const issuerAddress = permissionedDelegateMockWallet.address;
+      const subjectAddress = walletManager.account.address;
+      console.log("Issuer:", issuerAddress);
+      console.log("Subject:", subjectAddress);
+
+      // checkpoint 2
+      const client = new Client("wss://s.devnet.rippletest.net:51233");
+      console.log("Connecting to XRPL...");
+      await client.connect();
+      console.log("Connected ✅");
+
+      // checkpoint 3
+      const credentialCreateTx = {
+        TransactionType: "CredentialCreate",
+        Account: issuerAddress,
+        Subject: subjectAddress,
+        CredentialType: textToHex("KYC_CRED"),
+      };
+      console.log("Submitting TX:", credentialCreateTx);
+
+      const response = await client.submitAndWait(credentialCreateTx, {
+        autofill: true,
+        wallet: permissionedDelegateMockWallet,
+      });
+      console.log("TX result:", response);
+
+      toast.success("Credential issued successfully!");
+    } catch (err) {
+      console.error("❌ handleAcceptCredential error:", err);
+      toast.error(err.message || "Error in handleAcceptCredential");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleRetry = () => {
     // Reconstruit l'UI en fonction de la dernière policy demandée
     const req = requestedAttrsRef.current || {};
@@ -426,7 +487,6 @@ export function VerificationFlow({
           </p>
         </div>
       </div>
-
       {/* Domain Info */}
       <Card className="bg-slate-900/50 border-slate-800 p-6">
         <div className="flex items-start gap-4">
@@ -465,7 +525,6 @@ export function VerificationFlow({
           </div>
         </div>
       </Card>
-
       {/* Request */}
       {step === "request" && (
         <Card className="bg-slate-900/50 border-slate-800 p-12">
@@ -477,7 +536,6 @@ export function VerificationFlow({
           </div>
         </Card>
       )}
-
       {/* Scan / Verify */}
       {(step === "scan" || step === "verify") && (
         <Card className="bg-slate-900/50 border-slate-800 p-8">
@@ -522,7 +580,6 @@ export function VerificationFlow({
           </div>
         </Card>
       )}
-
       {step === "verify" && (
         <Card className="bg-slate-900/50 border-slate-800 p-12">
           <div className="text-center space-y-6">
@@ -561,6 +618,7 @@ export function VerificationFlow({
         </Card>
       )}
 
+      {console.log("Current step:", step)}
       {step === "complete" && (
         <Card className="bg-gradient-to-br from-teal-500/20 to-transparent border-teal-500/50 p-8">
           <div className="text-center space-y-6">
@@ -594,8 +652,8 @@ export function VerificationFlow({
             </Card>
 
             <Button
-              onClick={handleAcceptCredential}
-              disabled={isSubmitting} // ✅ disable pendant soumission
+              onClick={handleAcceptCredential_fin}
+              //onClick={() => console.log("Clicked!")} // ✅ nouveau handler
               className="bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700 text-white"
             >
               <Zap className="w-4 h-4 mr-2" />
@@ -604,7 +662,6 @@ export function VerificationFlow({
           </div>
         </Card>
       )}
-
       {/* Info */}
       <Card className="bg-amber-500/5 border-amber-500/20 p-4">
         <p className="text-sm text-slate-300">

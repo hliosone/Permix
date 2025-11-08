@@ -29,7 +29,7 @@ export function EnterpriseLogin({ onAuth, onBack }) {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (walletConnected && companyName.trim()) {
-      onAuth({walletAddress, companyName: companyName.trim(), walletManager});
+      onAuth({ walletAddress, companyName: companyName.trim(), walletManager });
     }
   };
 
