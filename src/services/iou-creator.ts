@@ -175,3 +175,74 @@ export async function createTrustLine(
   return prepared;
 }
 
+/**
+ * Create IOU token setup and return prepared transactions (enables rippling and creates trustline)
+ * Returns prepared transaction payloads ready to be signed and submitted
+ * Does NOT sign or submit transactions - returns payloads only
+ * 
+ * @param client - XRPL client
+ * @param issuerAddress - Issuer wallet address (cold wallet)
+ * @param receiverAddress - Receiver wallet address (hot wallet) that will receive tokens
+ * @param currencyCode - Currency code (3 letters or longer)
+ * @param trustlineLimit - Trustline limit (default: '10000')
+ * @param trustlineFlags - Optional array of TrustSetFlags
+ * @returns Object containing prepared transactions and token information
+ */
+export async function createIOUToken(
+  client: Client,
+  issuerAddress: string,
+  receiverAddress: string,
+  currencyCode: string,
+  trustlineLimit: string = '10000',
+  trustlineFlags: TrustSetFlags[] = []
+): Promise<{
+  success: boolean;
+  currency: string;
+  issuer: string;
+  receiver: string;
+  transactions: {
+    enableRippling: AccountSet;
+    createTrustLine: TrustSet;
+  };
+  error?: string;
+}> {
+  try {
+    // Step 1: Enable rippling on issuer
+    const rippleTx = await enableRippling(client, issuerAddress);
+
+    // Step 2: Create trustline from receiver to issuer
+    const trustTx = await createTrustLine(
+      client,
+      receiverAddress,
+      issuerAddress,
+      currencyCode,
+      trustlineLimit,
+      trustlineFlags
+    );
+
+    return {
+      success: true,
+      currency: currencyCode,
+      issuer: issuerAddress,
+      receiver: receiverAddress,
+      transactions: {
+        enableRippling: rippleTx,
+        createTrustLine: trustTx,
+      },
+    };
+  } catch (error: any) {
+    console.error('Error creating IOU token setup:', error);
+    return {
+      success: false,
+      currency: currencyCode,
+      issuer: issuerAddress,
+      receiver: receiverAddress,
+      transactions: {
+        enableRippling: {} as AccountSet,
+        createTrustLine: {} as TrustSet,
+      },
+      error: error?.message || 'Unknown error',
+    };
+  }
+}
+
