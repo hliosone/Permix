@@ -24,6 +24,7 @@ import { useSeedPhrase } from "../context/SeedPhraseContext";
 
 interface DashboardOverviewProps {
   companyName: string;
+  seedPhrase: string;
 }
 
 export function DashboardOverview({ companyName }: DashboardOverviewProps) {
@@ -33,7 +34,6 @@ export function DashboardOverview({ companyName }: DashboardOverviewProps) {
     if (e.key === "Enter" && seedPhrase.trim()) {
       // toast.success("Seed phrase securely processed");
       console.log("✅ Seed phrase submitted:", seedPhrase);
-      setSeedPhrase("");
     }
   };
 

@@ -23,7 +23,7 @@ interface TradingPair {
 interface Domain {
   id: string;
   domainId: string;
-  alias?: string;
+  alias: string;
   policyName: string;
   tradingPairs: TradingPair[];
   hybridOffers: boolean;
@@ -353,9 +353,11 @@ export function DomainCreator({ walletManager }: DomainCreatorProps) {
 
                     // WE DID THIS because Crossmark doesn't support for the moment the PermissionDomainSet transaction
                     // TODO: remplace la seed dans fromSeed par une variable de seed du wallet d'entreprise
+
+                  
                     const permissionedDelegateMockWallet =
                       Wallet.fromSeed(seedPhrase); // KYC Issuer
-                      console.log("Seed domain creator", seedPhrase)
+                    console.log("Seed domain creator", seedPhrase);
 
                     try {
                       const response = await client.submitAndWait(tx, {
@@ -363,12 +365,37 @@ export function DomainCreator({ walletManager }: DomainCreatorProps) {
                         wallet: permissionedDelegateMockWallet,
                       });
 
-                      return response.result; // si cest tesSUCCESS cest good sinon autre cest non
+                      const domain: Domain = {
+                        id: Date.now().toString(),
+                        domainId: `DOM-${Math.random()
+                          .toString(16)
+                          .substr(2, 8)
+                          .toUpperCase()}`,
+                        alias: newDomain.alias || "",
+                        policyName: newDomain.policyName,
+                        tradingPairs: [],
+                        hybridOffers: false,
+                        createdAt: new Date().toISOString(),
+                        stats: {
+                          users: 0,
+                          volume24h: "€0",
+                          trades: 0,
+                        },
+                      };
+
+                      setDomains((prev) => [...prev, domain]);
+                      setNewDomain({
+                        policyName: "",
+                        tradingPairs: [],
+                        hybridOffers: false,
+                      });
+                      setIsCreating(false);
                     } catch (error) {
                       //console.log( Error: ${error.message});
                       await client.disconnect();
+                    } finally {
+                      await client.disconnect();
                     }
-                    await client.disconnect();
                   }}
                   className="flex-1 bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700 text-white"
                 >

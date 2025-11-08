@@ -48,9 +48,9 @@ export function EnterpriseDashboard({
   const tabs = [
     { id: "dashboard" as Tab, label: "Dashboard", icon: LayoutDashboard },
     { id: "policies" as Tab, label: "Policies", icon: FileText },
+    { id: "assets" as Tab, label: "Assets", icon: Coins },
     { id: "domains" as Tab, label: "Domains", icon: Globe },
     { id: "dexs" as Tab, label: "Permissioned DEXs", icon: TrendingUp },
-    { id: "assets" as Tab, label: "Assets", icon: Coins },
     { id: "delegation" as Tab, label: "Delegation", icon: ShieldCheck },
   ];
 

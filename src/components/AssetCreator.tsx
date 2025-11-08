@@ -142,41 +142,7 @@ export function AssetCreator({ walletManager }: AssetCreatorProps) {
       return;
     }
 
-    let quantity = "100";
-
-    // For some weird reason, Crossmark wallet rejects TrustSet with Account other than
-    // wallet manager account address
-
-    const SetTrust = {
-      TransactionType: "TrustSet",
-      Account: walletAddress,
-      LimitAmount: {
-        currency: newAsset.code,
-        issuer: walletManager.account.address,
-        value: quantity,
-      },
-    };
-
-    const client = new Client("wss://s.devnet.rippletest.net:51233");
-    await client.connect();
-
-    // WE DID THIS because Crossmark doesn't support for the moment the PermissionDomainSet transaction
-    // TODO: remplace la seed dans fromSeed par une variable de seed du wallet d'entreprise
-    const permissionedDelegateMockWallet = Wallet.fromSeed(seedPhrase); // KYC Issuer
-
-    try {
-      const response = await client.submitAndWait(SetTrust, {
-        autofill: true,
-        wallet: permissionedDelegateMockWallet,
-      });
-
-      return response.result; // si cest tesSUCCESS cest good sinon autre cest non
-    } catch (error) {
-      //console.log( Error: ${error.message});
-      await client.disconnect();
-    }
-    await client.disconnect();
-
+    
     try {
       //const result = await walletManager.signAndSubmit(trustSetTx);
       //console.log("✅ XRPL TX result:", result);
@@ -187,7 +153,7 @@ export function AssetCreator({ walletManager }: AssetCreatorProps) {
         id: Date.now().toString(),
         ...newAsset,
         issuer: walletManager.account.address,
-        supply: quantity,
+        supply: "0",
         holders: 0,
         createdAt: new Date().toISOString(),
       };

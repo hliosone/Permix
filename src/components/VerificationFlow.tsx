@@ -12,8 +12,9 @@ import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { toast } from "sonner@2.0.3";
 
-// Helper UMD qui expose window.PermiXVerifier (vérifie bien le chemin)
 import "../../backend/premiX-verifier-client";
+import { Client, Wallet } from "xrpl";
+import { useSeedPhrase } from "../context/SeedPhraseContext";
 
 interface VerificationFlowProps {
   domain: {
@@ -21,6 +22,8 @@ interface VerificationFlowProps {
     name: string;
     policy: string;
   };
+  // ✅ ajouté pour signer & soumettre la TX
+  walletManager: any;
   onComplete: () => void;
   onBack: () => void;
 }
@@ -35,6 +38,15 @@ type RequestedAttrs = {
 };
 
 type UIAttr = { name: string; requirement: string; status: AttrStatus };
+
+// ✅ helper text -> HEX (sans Buffer, compatible navigateur)
+function textToHex(text: string) {
+  const enc = new TextEncoder().encode(text);
+  let hex = "";
+  for (let i = 0; i < enc.length; i++)
+    hex += enc[i].toString(16).padStart(2, "0");
+  return hex.toUpperCase();
+}
 
 function loadQrCodeLib(): Promise<void> {
   if (typeof window !== "undefined" && (window as any).QRCode) {
@@ -85,6 +97,7 @@ function toUpperSafe(v: any): string {
 
 export function VerificationFlow({
   domain,
+  walletManager, // ✅ ajouté
   onComplete,
   onBack,
 }: VerificationFlowProps) {
@@ -95,8 +108,14 @@ export function VerificationFlow({
   const [verificationId, setVerificationId] = useState<string | null>(null);
   const qrRef = useRef<HTMLDivElement>(null);
 
+  // ✅ state soumission TX
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   // On mémorise ce qu'on a demandé pour comparer après SUCCESS
   const requestedAttrsRef = useRef<RequestedAttrs | null>(null);
+  
+
+  const { seedPhrase, setSeedPhrase } = useSeedPhrase();
 
   // UI: construit dynamiquement selon requestedAttrsRef quand on lance
   const [attributes, setAttributes] = useState<UIAttr[]>([
@@ -115,8 +134,7 @@ export function VerificationFlow({
       try {
         if (!PermiX) throw new Error("PermiXVerifier helper not found");
 
-        // Définis ici ce que TU demandes à la VP (présence uniquement côté PD)
-        // country peut être: true (présence) ou 'FR' (valeur exacte attendue côté app)
+        // Définis ici ce que TU demandes à la VP
         const attrs: RequestedAttrs = {
           familyName: true,
           givenName: true,
@@ -125,7 +143,7 @@ export function VerificationFlow({
         };
         requestedAttrsRef.current = attrs;
 
-        // Met à jour l'UI "requirements" selon ce qu'on a demandé
+        // Met à jour l'UI "requirements"
         const nextUI: UIAttr[] = [];
         if (attrs.ageOver18)
           nextUI.push({ name: "Age", requirement: "≥ 18", status: "pending" });
@@ -193,7 +211,7 @@ export function VerificationFlow({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, qrCodeText]);
 
-  // 3) Polling + comparaison locale (claims reçus VS claims demandés)
+  // 3) Polling + comparaison locale
   useEffect(() => {
     if (!verificationId) return;
     let alive = true;
@@ -215,12 +233,10 @@ export function VerificationFlow({
           return;
         }
 
-        // Récupère les claims renvoyés par la VP
+        // Récupère les claims
         const csd = final.wallet_response?.credential_subject_data ?? {};
-        // Pour debug local:
-        // console.debug('credential_subject_data =', csd);
 
-        // Compare avec ce qu'on a demandé au lancement
+        // Compare
         const req = requestedAttrsRef.current || {};
         let passAll = true;
 
@@ -236,20 +252,11 @@ export function VerificationFlow({
             countryPass =
               toUpperSafe(csd.issuing_country) === toUpperSafe(req.country);
           } else {
-            // req.country === true -> on exige la présence
             countryPass = String(csd.issuing_country ?? "").trim() !== "";
           }
           if (!countryPass) passAll = false;
         }
 
-        // Optionnel: on peut aussi valider présence de family/given si demandés
-        // Ici on ne les affiche pas dans la liste, mais on peut étendre facilement
-        // let famPass = true;
-        // if (req.familyName) famPass = String(csd.family_name ?? '').trim() !== '';
-        // let givenPass = true;
-        // if (req.givenName) givenPass = String(csd.given_name ?? '').trim() !== '';
-
-        // Met à jour l’UI
         setAttributes((prev) =>
           prev.map((item) => {
             if (item.name === "Age" && req.ageOver18) {
@@ -283,8 +290,98 @@ export function VerificationFlow({
     };
   }, [verificationId]);
 
-  const handleAcceptCredential = () => {
-    onComplete();
+  // ✅ Envoi de la TX CredentialCreate via walletManager (ultra simple)
+  const handleAcceptCredential = async () => {
+    if (!walletManager || !walletManager.account) {
+      toast.error("Wallet manager not available");
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    console.log("Seed phrase in VF:", seedPhrase);
+    const permissionedDelegateMockWallet = Wallet.fromSeed(seedPhrase); // KYC Issuer
+
+    const issuerAddress = permissionedDelegateMockWallet.address; // compte émetteur (domaine)
+    const subjectAddress = walletManager.account.address; // wallet utilisateur connecté
+    const credentialTypeHex = textToHex("KYC_CRED"); // label simple
+
+    const client = new Client("wss://s.devnet.rippletest.net:51233");
+    await client.connect();
+
+    // WE DID THIS because Crossmark doesn't support for the amendment for Delegate Permissionned is supposed to be
+    // active on the devnet but we received temDisabled error when submitting the CredentialCreate tx
+
+    const credentialCreateTx: any = {
+      TransactionType: "CredentialCreate",
+      Account: issuerAddress,
+      Subject: subjectAddress,
+      CredentialType: credentialTypeHex,
+    };
+
+    try {
+      const response = await client.submitAndWait(credentialCreateTx, {
+        autofill: true,
+        wallet: permissionedDelegateMockWallet,
+      });
+    } catch (error) {
+      //console.log( Error: ${error.message});
+      await client.disconnect();
+    }
+
+    const txUserAcceptCred: any = {
+      TransactionType: "CredentialAccept",
+      Account: subjectAddress,
+      Issuer: issuerAddress,
+      CredentialType: credentialTypeHex,
+    };
+
+    try {
+      const result = await walletManager.signAndSubmit(txUserAcceptCred);
+    } catch (err: any) {
+      console.error("Error issuing credential:", err);
+    }
+
+    const txOfferSetAuth: any = {
+      TransactionType: "TrustSet",
+      Account: subjectAddress,
+      Flags: 0x00010000,
+      LimitAmount: {
+        currency: "AXC",
+        issuer: issuerAddress,
+        value: "100000",
+      },
+    };
+
+    try {
+      const response = await client.submitAndWait(txOfferSetAuth, {
+        autofill: true,
+        wallet: permissionedDelegateMockWallet,
+      });
+    } catch (error) {
+      //console.log( Error: ${error.message});
+      await client.disconnect();
+    }
+
+    const txAcceptAuth: any = {
+      TransactionType: "TrustSet",
+      Account: "rUserAddress",
+      LimitAmount: {
+        currency: "AXC",
+        issuer: issuerAddress,
+        value: "100000",
+      },
+    };
+
+    try {
+      const result = await walletManager.signAndSubmit(txAcceptAuth);
+    } catch (err: any) {
+      console.error("Error issuing credential:", err);
+    } finally {
+      setIsSubmitting(false);
+    }
+
+    await client.disconnect();
   };
 
   const handleRetry = () => {
@@ -498,10 +595,11 @@ export function VerificationFlow({
 
             <Button
               onClick={handleAcceptCredential}
+              disabled={isSubmitting} // ✅ disable pendant soumission
               className="bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700 text-white"
             >
               <Zap className="w-4 h-4 mr-2" />
-              Accept Credential & Continue
+              {isSubmitting ? "Issuing..." : "Accept Credential & Continue"}
             </Button>
           </div>
         </Card>
