@@ -30,49 +30,46 @@ interface Asset {
 export function AssetCreator() {
   const [assets, setAssets] = useState<Asset[]>([
     {
-      id: '1',
-      name: 'Euro Stablecoin',
-      code: 'EURC',
-      description: 'MiCA-compliant euro-backed stablecoin',
+      id: "1",
+      name: "Euro Stablecoin",
+      code: "EURC",
+      description: "Mi4CA-compliant euro-backed stablecoin",
       flags: {
         requireAuth: true,
         freeze: true,
         clawback: true,
       },
-      preset: 'MiCA',
-      issuer: 'rN7n7otQDd6FczFgLdOqDdqu7h3oMVUi9M',
-      supply: '€5,234,567',
+      preset: "MiCA",
+      issuer: "rN7n7otQDd6FczFgLdOqDdqu7h3oMVUi9M",
+      supply: "€5,234,567",
       holders: 432,
       createdAt: new Date().toISOString(),
     },
   ]);
   const [isCreating, setIsCreating] = useState(false);
+  const [ripplingEnabled, setRipplingEnabled] = useState(false);
   const [newAsset, setNewAsset] = useState({
-    name: '',
-    code: '',
-    description: '',
+    name: "",
+    code: "",
+    description: "",
     flags: {
       requireAuth: false,
       freeze: false,
       clawback: false,
     },
-    preset: 'Custom',
+    preset: "Custom",
   });
 
   const presets = [
     {
-      name: 'MiCA',
-      description: 'EU Markets in Crypto-Assets regulation',
+      name: "MiCA",
+      description: "EU Markets in Crypto-Assets regulation",
       flags: { requireAuth: true, freeze: true, clawback: true },
     },
+    
     {
-      name: 'FINMA',
-      description: 'Swiss Financial Market Supervisory Authority',
-      flags: { requireAuth: true, freeze: true, clawback: false },
-    },
-    {
-      name: 'Custom',
-      description: 'Configure flags manually',
+      name: "Custom",
+      description: "Configure flags manually",
       flags: { requireAuth: false, freeze: false, clawback: false },
     },
   ];
@@ -90,33 +87,33 @@ export function AssetCreator() {
 
   const createAsset = () => {
     if (!newAsset.name.trim() || !newAsset.code.trim()) {
-      toast.error('Please enter asset name and code');
+      toast.error("Please enter asset name and code");
       return;
     }
 
     const asset: Asset = {
       id: Date.now().toString(),
       ...newAsset,
-      issuer: 'rN7n7otQDd6FczFgLdOqDdqu7h3oMVUi9M',
-      supply: '0',
+      issuer: "rN7n7otQDd6FczFgLdOqDdqu7h3oMVUi9M",
+      supply: "0",
       holders: 0,
       createdAt: new Date().toISOString(),
     };
 
     setAssets([...assets, asset]);
     setNewAsset({
-      name: '',
-      code: '',
-      description: '',
+      name: "",
+      code: "",
+      description: "",
       flags: {
         requireAuth: false,
         freeze: false,
         clawback: false,
       },
-      preset: 'Custom',
+      preset: "Custom",
     });
     setIsCreating(false);
-    toast.success('Asset created and transaction submitted!');
+    toast.success("Asset created and transaction submitted!");
   };
 
   return (
@@ -125,15 +122,47 @@ export function AssetCreator() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-3xl text-slate-100 mb-2">Asset Management</h2>
-          <p className="text-slate-400">Create and manage compliant tokens (IOUs) on XRP Ledger</p>
+          <p className="text-slate-400">
+            Create and manage compliant tokens (IOUs) on XRP Ledger
+          </p>
         </div>
-        <Button
-          onClick={() => setIsCreating(true)}
-          className="bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700 text-white"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Create Asset
-        </Button>
+        <div className="flex gap-3">
+          <Button
+            onClick={() => {
+              if (!ripplingEnabled) {
+                setRipplingEnabled(true);
+                toast.success("Rippling enabled successfully!");
+              }
+            }}
+            disabled={ripplingEnabled}
+            className={
+              ripplingEnabled
+                ? "!bg-emerald-500 !text-white border-2 !border-emerald-300 cursor-default !hover:bg-emerald-500 shadow-lg shadow-emerald-500/20"
+                : "!bg-gradient-to-r !from-amber-500 !to-amber-600 hover:!from-amber-600 hover:!to-amber-700 !text-white"
+            }
+          >
+            {ripplingEnabled ? (
+              <>
+                <Check className="w-4 h-4 mr-2" />
+                Rippling Enabled
+              </>
+            ) : (
+              "Enable Rippling"
+            )}
+          </Button>
+          <Button
+            onClick={() => setIsCreating(true)}
+            disabled={!ripplingEnabled}
+            className={
+              ripplingEnabled
+                ? "bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700 text-white"
+                : "bg-slate-700 text-slate-500 cursor-not-allowed"
+            }
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Create Asset
+          </Button>
+        </div>
       </div>
 
       {/* Assets Grid */}
@@ -152,8 +181,12 @@ export function AssetCreator() {
                       {asset.code}
                     </code>
                   </div>
-                  <p className="text-sm text-slate-400 mb-2">{asset.description}</p>
-                  <p className="text-xs text-slate-500 font-mono">Issuer: {asset.issuer}</p>
+                  <p className="text-sm text-slate-400 mb-2">
+                    {asset.description}
+                  </p>
+                  <p className="text-xs text-slate-500 font-mono">
+                    Issuer: {asset.issuer}
+                  </p>
                 </div>
               </div>
               <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30">
@@ -173,12 +206,6 @@ export function AssetCreator() {
                 <div className="flex items-center gap-1.5 px-2 py-1 bg-cyan-500/10 border border-cyan-500/30 rounded text-xs text-cyan-400">
                   <Snowflake className="w-3 h-3" />
                   <span>Freeze</span>
-                </div>
-              )}
-              {asset.flags.clawback && (
-                <div className="flex items-center gap-1.5 px-2 py-1 bg-purple-500/10 border border-purple-500/30 rounded text-xs text-purple-400">
-                  <RotateCcw className="w-3 h-3" />
-                  <span>Clawback</span>
                 </div>
               )}
             </div>
@@ -213,7 +240,9 @@ export function AssetCreator() {
                 <Input
                   placeholder="e.g., Euro Stablecoin"
                   value={newAsset.name}
-                  onChange={(e) => setNewAsset({ ...newAsset, name: e.target.value })}
+                  onChange={(e) =>
+                    setNewAsset({ ...newAsset, name: e.target.value })
+                  }
                   className="bg-slate-800/50 border-slate-700"
                 />
               </div>
@@ -222,22 +251,29 @@ export function AssetCreator() {
                 <Input
                   placeholder="e.g., EURC"
                   value={newAsset.code}
-                  onChange={(e) => setNewAsset({ ...newAsset, code: e.target.value.toUpperCase() })}
+                  onChange={(e) =>
+                    setNewAsset({
+                      ...newAsset,
+                      code: e.target.value.toUpperCase(),
+                    })
+                  }
                   className="bg-slate-800/50 border-slate-700"
                   maxLength={3}
                 />
               </div>
             </div>
 
-            {/*<div className="space-y-2">
+            <div className="space-y-2">
               <Label>Description</Label>
               <Textarea
                 placeholder="Brief description of the asset..."
                 value={newAsset.description}
-                onChange={(e) => setNewAsset({ ...newAsset, description: e.target.value })}
+                onChange={(e) =>
+                  setNewAsset({ ...newAsset, description: e.target.value })
+                }
                 className="bg-slate-800/50 border-slate-700 min-h-20"
               />
-            </div>*/}
+            </div>
 
             {/* Compliance Presets */}
             <div className="space-y-3">
@@ -249,8 +285,8 @@ export function AssetCreator() {
                     onClick={() => selectPreset(preset.name)}
                     className={`p-4 border rounded-lg text-left transition-all ${
                       newAsset.preset === preset.name
-                        ? 'border-teal-500/50 bg-teal-500/10'
-                        : 'border-slate-700 bg-slate-800/30 hover:border-slate-600'
+                        ? "border-teal-500/50 bg-teal-500/10"
+                        : "border-slate-700 bg-slate-800/30 hover:border-slate-600"
                     }`}
                   >
                     <div className="flex items-center justify-between mb-2">
@@ -259,7 +295,9 @@ export function AssetCreator() {
                         <Check className="w-4 h-4 text-teal-400" />
                       )}
                     </div>
-                    <p className="text-xs text-slate-400">{preset.description}</p>
+                    <p className="text-xs text-slate-400">
+                      {preset.description}
+                    </p>
                   </button>
                 ))}
               </div>
@@ -268,7 +306,7 @@ export function AssetCreator() {
             {/* Flags */}
             <div className="space-y-3 pt-4 border-t border-slate-800">
               <Label>Asset Flags</Label>
-              
+
               <div className="space-y-3">
                 <div className="flex items-start gap-3 p-3 bg-slate-800/30 rounded-lg">
                   <Checkbox
@@ -276,8 +314,11 @@ export function AssetCreator() {
                     onCheckedChange={(checked) =>
                       setNewAsset({
                         ...newAsset,
-                        flags: { ...newAsset.flags, requireAuth: checked as boolean },
-                        preset: 'Custom',
+                        flags: {
+                          ...newAsset.flags,
+                          requireAuth: checked as boolean,
+                        },
+                        preset: "Custom",
                       })
                     }
                     className="mt-1"
@@ -299,8 +340,11 @@ export function AssetCreator() {
                     onCheckedChange={(checked) =>
                       setNewAsset({
                         ...newAsset,
-                        flags: { ...newAsset.flags, freeze: checked as boolean },
-                        preset: 'Custom',
+                        flags: {
+                          ...newAsset.flags,
+                          freeze: checked as boolean,
+                        },
+                        preset: "Custom",
                       })
                     }
                     className="mt-1"
@@ -316,28 +360,7 @@ export function AssetCreator() {
                   </div>
                 </div>
 
-                <div className="flex items-start gap-3 p-3 bg-slate-800/30 rounded-lg">
-                  <Checkbox
-                    checked={newAsset.flags.clawback}
-                    onCheckedChange={(checked) =>
-                      setNewAsset({
-                        ...newAsset,
-                        flags: { ...newAsset.flags, clawback: checked as boolean },
-                        preset: 'Custom',
-                      })
-                    }
-                    className="mt-1"
-                  />
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <RotateCcw className="w-4 h-4 text-purple-400" />
-                      <span className="text-slate-200">Clawback</span>
-                    </div>
-                    <p className="text-xs text-slate-500">
-                      Ability to recover tokens from user accounts
-                    </p>
-                  </div>
-                </div>
+                
               </div>
             </div>
 
