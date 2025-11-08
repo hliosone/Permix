@@ -38,12 +38,7 @@ export interface PermissionedDomainSet {
 /**
  * DomainJoin transaction type (XLS-0080 spec structure)
  */
-export interface DomainJoin {
-  TransactionType: 'DomainJoin';
-  Account: string;
-  DomainID: string;
-  Credentials?: string[];
-}
+
 
 /**
  * Create a permissioned domain
@@ -108,51 +103,44 @@ export async function createPermissionedDomain(
  * @param client - XRPL client
  * @param memberAddress - Address joining the domain
  * @param domainId - Domain ID to join
- * @param credentials - Optional credentials to present
+ * @param credential - Optional credential to present (single credential object)
  */
-export async function joinPermissionedDomain(
+
+/**
+ * Get domain ID from ledger objects after domain creation
+ * Helper function to get actual domain ID from transaction result
+ * Based on working pattern from domainswork.ts
+ * 
+ * @param client - XRPL client
+ * @param ownerAddress - Address that created the domain
+ * @param sequence - Sequence number of the domain creation transaction
+ */
+export async function getDomainId(
   client: Client,
-  memberAddress: string,
-  domainId: string,
-  credentials?: string[]
-): Promise<{
-  success: boolean;
-  transaction?: DomainJoin;
-  error?: string;
-}> {
+  ownerAddress: string,
+  sequence: number
+): Promise<string | null> {
   try {
-    console.log('=== Preparing Domain Join ===');
-    console.log('Domain ID:', domainId);
-    console.log('Member:', memberAddress);
-    console.log('Credentials:', credentials);
+    const accountObjects = await client.request({
+      command: 'account_objects',
+      account: ownerAddress,
+      ledger_index: 'validated',
+      type: 'permissioned_domain',
+    });
 
-    // Build DomainJoin transaction according to XLS-0080 spec
-    const domainJoin: DomainJoin = {
-      TransactionType: 'DomainJoin',
-      Account: memberAddress,
-      DomainID: domainId,
-    };
+    // Find the domain that matches the sequence
+    const domain = (accountObjects.result as any).account_objects?.find(
+      (obj: any) => obj.Sequence === sequence
+    );
 
-    if (credentials && credentials.length > 0) {
-      domainJoin.Credentials = credentials;
+    if (domain && domain.index) {
+      return domain.index;
     }
 
-    console.log('DomainJoin transaction:', domainJoin);
-
-    // Autofill the transaction
-    const prepared = await client.autofill(domainJoin as any);
-    console.log('DomainJoin transaction prepared:', prepared);
-
-    return {
-      success: true,
-      transaction: prepared as DomainJoin,
-    };
+    return null;
   } catch (error) {
-    console.error('Error preparing domain join:', error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    };
+    console.log(`Error fetching domain ID: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    return null;
   }
 }
 
@@ -161,40 +149,38 @@ export async function joinPermissionedDomain(
  * Queries the ledger for domain data
  * 
  * @param client - XRPL client
- * @param domainId - Domain ID to query
+ * @param ownerAddress - Address that owns the domain
  */
 export async function getDomainInfo(
   client: Client,
-  domainId: string
+  ownerAddress: string
 ): Promise<{
   success: boolean;
-  domain?: any;
+  domains?: any[];
   error?: string;
 }> {
   try {
     // Query account_objects for domain data
-    // Note: Domain data structure may vary on devnet
     const accountObjects = await client.request({
       command: 'account_objects',
-      account: domainId, // Domain ID might be an account or ledger object
+      account: ownerAddress,
       ledger_index: 'validated',
+      type: 'permissioned_domain',
     });
 
     const result = accountObjects.result as any;
-    const domains = result.account_objects?.filter(
-      (obj: any) => obj.LedgerEntryType === 'Domain' || obj.DomainID === domainId
-    );
+    const domains = result.account_objects || [];
 
     if (domains && domains.length > 0) {
       return {
         success: true,
-        domain: domains[0],
+        domains: domains,
       };
     }
 
     return {
       success: false,
-      error: 'Domain not found',
+      error: 'No domains found',
     };
   } catch (error) {
     console.error('Error fetching domain info:', error);
