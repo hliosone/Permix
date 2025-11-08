@@ -32,7 +32,11 @@ interface Domain {
   };
 }
 
-export function DomainCreator() {
+interface DomainCreatorProps {
+  walletManager: any;
+}
+
+export function DomainCreator({ walletManager }: DomainCreatorProps) {
   const { domains, setDomains } = useDomains();
 
   const [isCreating, setIsCreating] = useState(false);
@@ -287,7 +291,45 @@ export function DomainCreator() {
                   Cancel
                 </Button>
                 <Button
-                  onClick={createDomain}
+                  onClick={async () => {
+                    if (
+                      !walletManager ||
+                      !walletManager.connected ||
+                      !walletManager.account
+                    ) {
+                      toast.error("Please connect your wallet first");
+                      return;
+                    }
+
+                    // Build the XRPL transaction
+                    const domainCreatorAddress = walletManager.account.address;
+                    const tx = {
+                      TransactionType: "PermissionedDomainSet",
+                      Account: domainCreatorAddress,
+                      AcceptedCredentials: [
+                        {
+                          Credential: {
+                            Issuer: domainCreatorAddress,
+                            CredentialType: newDomain.policyName,
+                          },
+                        },
+                      ],
+                    };
+
+                    try {
+                      console.log("🔁 Submitting TX:", tx);
+                      const result = await walletManager.signAndSubmit(tx);
+                      console.log("✅ XRPL TX result:", result);
+
+                      toast.success("Domain successfully created on XRPL!");
+
+                      // Update your frontend UI state
+                      createDomain();
+                    } catch (e) {
+                      console.error("💥 Error creating domain:", e);
+                      toast.error("Failed to create domain on XRPL");
+                    }
+                  }}
                   className="flex-1 bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700 text-white"
                 >
                   <Check className="w-4 h-4 mr-2" />

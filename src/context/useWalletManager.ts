@@ -74,7 +74,7 @@ function useWalletManager(adapters, network = 'testnet') {
       isMounted = false;
       clearInterval(interval);
       // Don’t destroy the manager on every re-render — only on unmount
-      manager.disconnect().catch(() => {});
+      //manager.disconnect().catch(() => {});
     };
   }, []); // ✅ empty deps → never re-run, stable
 

@@ -11,6 +11,7 @@ type UserRole = 'enterprise' | 'user' | null;
 interface EnterpriseData {
   walletAddress: string;
   companyName: string;
+  walletManager: any;
 }
 
 interface UserData {
@@ -20,7 +21,9 @@ interface UserData {
 export default function App() {
   const [role, setRole] = useState<UserRole>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [enterpriseData, setEnterpriseData] = useState<EnterpriseData | null>(null);
+  const [enterpriseData, setEnterpriseData] = useState<EnterpriseData | null>(
+    null
+  );
   const [userData, setUserData] = useState<UserData | null>(null);
 
   const handleEnterpriseAuth = (data: EnterpriseData) => {
@@ -45,7 +48,7 @@ export default function App() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex items-center justify-center p-4">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-teal-900/20 via-transparent to-transparent pointer-events-none" />
-        
+
         <div className="relative z-10 w-full max-w-5xl">
           {/* Logo and Header */}
           <div className="text-center mb-12">
@@ -69,21 +72,22 @@ export default function App() {
           <div className="grid md:grid-cols-2 gap-6">
             {/* Enterprise Card */}
             <button
-              onClick={() => setRole('enterprise')}
+              onClick={() => setRole("enterprise")}
               className="group relative bg-slate-900/50 backdrop-blur border border-slate-800 rounded-2xl p-8 hover:border-teal-500/50 transition-all duration-300 text-left"
             >
               <div className="absolute inset-0 bg-gradient-to-br from-teal-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl" />
-              
+
               <div className="relative">
                 <div className="w-16 h-16 bg-gradient-to-br from-teal-500/20 to-teal-600/20 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                   <Building2 className="w-8 h-8 text-teal-400" />
                 </div>
-                
+
                 <h2 className="text-2xl text-slate-100 mb-3">Enterprise</h2>
                 <p className="text-slate-400 mb-6">
-                  Create policies, issue credentials, and manage permissioned trading domains
+                  Create policies, issue credentials, and manage permissioned
+                  trading domains
                 </p>
-                
+
                 <ul className="space-y-2 mb-8">
                   <li className="flex items-start gap-2 text-sm text-slate-400">
                     <div className="w-1.5 h-1.5 bg-teal-400 rounded-full mt-1.5" />
@@ -108,21 +112,22 @@ export default function App() {
 
             {/* User Card */}
             <button
-              onClick={() => setRole('user')}
+              onClick={() => setRole("user")}
               className="group relative bg-slate-900/50 backdrop-blur border border-slate-800 rounded-2xl p-8 hover:border-amber-500/50 transition-all duration-300 text-left"
             >
               <div className="absolute inset-0 bg-gradient-to-br from-amber-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl" />
-              
+
               <div className="relative">
                 <div className="w-16 h-16 bg-gradient-to-br from-amber-500/20 to-amber-600/20 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                   <User className="w-8 h-8 text-amber-400" />
                 </div>
-                
+
                 <h2 className="text-2xl text-slate-100 mb-3">User</h2>
                 <p className="text-slate-400 mb-6">
-                  Join permissioned domains, verify identity, and trade compliant assets
+                  Join permissioned domains, verify identity, and trade
+                  compliant assets
                 </p>
-                
+
                 <ul className="space-y-2 mb-8">
                   <li className="flex items-start gap-2 text-sm text-slate-400">
                     <div className="w-1.5 h-1.5 bg-amber-400 rounded-full mt-1.5" />
@@ -148,7 +153,8 @@ export default function App() {
 
           {/* Footer */}
           <div className="text-center mt-12 text-slate-500 text-sm">
-            Powered by XRP Ledger • Verifiable Credentials • Permission Delegation
+            Powered by XRP Ledger • Verifiable Credentials • Permission
+            Delegation
           </div>
         </div>
       </div>
@@ -156,15 +162,29 @@ export default function App() {
   }
 
   // Enterprise Flow
-  if (role === 'enterprise') {
+  if (role === "enterprise") {
     if (!isAuthenticated) {
-      return <EnterpriseLogin onAuth={handleEnterpriseAuth} onBack={() => setRole(null)} />;
+      return (
+        <EnterpriseLogin
+          onAuth={handleEnterpriseAuth}
+          onBack={() => setRole(null)}
+        />
+      );
     }
-    return <EnterpriseDashboard data={enterpriseData!} onLogout={handleLogout} />;
+    return (
+      <EnterpriseDashboard
+        data={{
+          walletAddress: enterpriseData!.walletAddress,
+          companyName: enterpriseData!.companyName,
+          walletManager: enterpriseData!.walletManager, // 🟩 add this
+        }}
+        onLogout={handleLogout}
+      />
+    );
   }
 
   // User Flow
-  if (role === 'user') {
+  if (role === "user") {
     if (!isAuthenticated) {
       return <UserLogin onAuth={handleUserAuth} onBack={() => setRole(null)} />;
     }

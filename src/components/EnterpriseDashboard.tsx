@@ -22,6 +22,7 @@ interface EnterpriseDashboardProps {
   data: {
     walletAddress: string;
     companyName: string;
+    walletManager: any;
   };
   onLogout: () => void;
 }
@@ -107,7 +108,9 @@ export function EnterpriseDashboard({ data, onLogout }: EnterpriseDashboardProps
                   <DashboardOverview companyName={data.companyName} />
                 )}
                 {activeTab === "policies" && <PolicyBuilder />}
-                {activeTab === "domains" && <DomainCreator />}
+                {activeTab === "domains" && (
+                  <DomainCreator walletManager={data.walletManager} /> // 🟢 pass it down
+                )}
                 {activeTab === "assets" && <AssetCreator />}
                 {activeTab === "delegation" && <PermissionDelegation />}
               </div>

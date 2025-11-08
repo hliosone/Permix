@@ -229,7 +229,7 @@ export function AssetCreator() {
               </div>
             </div>
 
-            <div className="space-y-2">
+            {/*<div className="space-y-2">
               <Label>Description</Label>
               <Textarea
                 placeholder="Brief description of the asset..."
@@ -237,7 +237,7 @@ export function AssetCreator() {
                 onChange={(e) => setNewAsset({ ...newAsset, description: e.target.value })}
                 className="bg-slate-800/50 border-slate-700 min-h-20"
               />
-            </div>
+            </div>*/}
 
             {/* Compliance Presets */}
             <div className="space-y-3">
