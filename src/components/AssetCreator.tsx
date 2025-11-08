@@ -9,6 +9,7 @@ import { Checkbox } from './ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { Badge } from './ui/badge';
 import { toast } from 'sonner@2.0.3';
+import { Client, Wallet } from "xrpl";
 
 interface Asset {
   id: string;
@@ -27,7 +28,12 @@ interface Asset {
   createdAt: string;
 }
 
-export function AssetCreator() {
+interface AssetCreatorProps {
+  // 🟢 optionally accept walletManager prop
+  walletManager: any;
+}
+
+export function AssetCreator({ walletManager }: AssetCreatorProps) {
   const [assets, setAssets] = useState<Asset[]>([
     {
       id: "1",
@@ -59,6 +65,11 @@ export function AssetCreator() {
     },
     preset: "Custom",
   });
+  const [hasBeenChecked, setHasBeenChecked] = useState(
+    newAsset.flags.requireAuth
+  );
+
+  const walletAddress = "rfbsmVCbmAqPsCNRQNDoDAvMSQJwBvMTyn";
 
   const presets = [
     {
@@ -66,7 +77,7 @@ export function AssetCreator() {
       description: "EU Markets in Crypto-Assets regulation",
       flags: { requireAuth: true, freeze: true, clawback: true },
     },
-    
+
     {
       name: "Custom",
       description: "Configure flags manually",
@@ -85,22 +96,114 @@ export function AssetCreator() {
     }
   };
 
-  const createAsset = () => {
+  const handleCheck = async (checked) => {
+    if (hasBeenChecked && !checked) return;
+
+    const domainCreatorAddress = walletManager.account.address;
+    const flags = [];
+    flags.push(2);
+    const tx = {
+      TransactionType: "AccountSet",
+      Account: domainCreatorAddress,
+      SetFlag: flags[0],
+    };
+
+    try {
+      console.log("🔁 Submitting TX:", tx);
+      const result = await walletManager.signAndSubmit(tx);
+      console.log("✅ XRPL TX result:", result);
+
+      toast.success("Domain successfully created on XRPL!");
+      setNewAsset({
+        ...newAsset,
+        flags: {
+          ...newAsset.flags,
+          requireAuth: checked as boolean,
+        },
+        preset: "Custom",
+      });
+
+      if (checked) setHasBeenChecked(true);
+
+      // Update your frontend UI state
+      //createDomain();
+    } catch (e) {
+      console.error("💥 Error creating domain:", e);
+      toast.error("Failed to create domain on XRPL");
+    }
+  };
+
+  const createAsset = async () => {
     if (!newAsset.name.trim() || !newAsset.code.trim()) {
       toast.error("Please enter asset name and code");
       return;
     }
 
-    const asset: Asset = {
-      id: Date.now().toString(),
-      ...newAsset,
-      issuer: "rN7n7otQDd6FczFgLdOqDdqu7h3oMVUi9M",
-      supply: "0",
-      holders: 0,
-      createdAt: new Date().toISOString(),
-    };
+    let quantity = "100";
 
-    setAssets([...assets, asset]);
+    // For some weird reason, Crossmark wallet rejects TrustSet with Account other than 
+    // wallet manager account address
+
+    
+
+    const SetTrust = 
+      {
+        TransactionType: "TrustSet",
+        Account: walletAddress,
+        LimitAmount: {
+          currency: newAsset.code,
+          issuer: walletManager.account.address,
+          value: quantity,
+        },
+      }
+
+    const client = new Client('wss://s.devnet.rippletest.net:51233');
+    await client.connect();
+
+    // WE DID THIS because Crossmark doesn't support for the moment the PermissionDomainSet transaction
+    // TODO: remplace la seed dans fromSeed par une variable de seed du wallet d'entreprise
+    const permissionedDelegateMockWallet =
+        Wallet.fromSeed("sEdTQ8FaY5rW8rMGZep3i1dZXavMBVc"); // KYC Issuer
+
+        try {
+            const response = await client.submitAndWait(SetTrust, {
+                autofill: true,
+                wallet: permissionedDelegateMockWallet,
+            });
+
+            return response.result // si cest tesSUCCESS cest good sinon autre cest non
+
+        } catch (error) {
+            //console.log( Error: ${error.message});
+            await client.disconnect();
+        }
+    await client.disconnect();
+
+    try {
+      //const result = await walletManager.signAndSubmit(trustSetTx);
+      //console.log("✅ XRPL TX result:", result);
+
+      toast.success("Domain successfully created on XRPL!");
+
+      const asset: Asset = {
+        id: Date.now().toString(),
+        ...newAsset,
+        issuer: walletManager.account.address,
+        supply: quantity,
+        holders: 0,
+        createdAt: new Date().toISOString(),
+      };
+
+      setAssets([...assets, asset]);
+      toast.success("Asset created and transaction submitted!");
+
+      // Update your frontend UI state
+      //createDomain();
+    } catch (e) {
+      console.error("💥 Error creating domain:", e);
+      toast.error("Failed to create domain on XRPL");
+    }
+
     setNewAsset({
       name: "",
       code: "",
@@ -112,8 +215,8 @@ export function AssetCreator() {
       },
       preset: "Custom",
     });
+    setHasBeenChecked(false);
     setIsCreating(false);
-    toast.success("Asset created and transaction submitted!");
   };
 
   return (
@@ -128,10 +231,30 @@ export function AssetCreator() {
         </div>
         <div className="flex gap-3">
           <Button
-            onClick={() => {
-              if (!ripplingEnabled) {
-                setRipplingEnabled(true);
-                toast.success("Rippling enabled successfully!");
+            onClick={async () => {
+              const domainCreatorAddress = walletManager.account.address;
+              const tx = {
+                TransactionType: "AccountSet",
+                Account: domainCreatorAddress,
+                SetFlag: 8, // Enable Rippling
+              };
+
+              try {
+                console.log("🔁 Submitting TX:", tx);
+                const result = await walletManager.signAndSubmit(tx);
+                console.log("✅ XRPL TX result:", result);
+
+                toast.success("Domain successfully created on XRPL!");
+                if (!ripplingEnabled) {
+                  setRipplingEnabled(true);
+                  toast.success("Rippling enabled successfully!");
+                }
+
+                // Update your frontend UI state
+                //createDomain();
+              } catch (e) {
+                console.error("💥 Error creating domain:", e);
+                toast.error("Failed to create domain on XRPL");
               }
             }}
             disabled={ripplingEnabled}
@@ -311,16 +434,8 @@ export function AssetCreator() {
                 <div className="flex items-start gap-3 p-3 bg-slate-800/30 rounded-lg">
                   <Checkbox
                     checked={newAsset.flags.requireAuth}
-                    onCheckedChange={(checked) =>
-                      setNewAsset({
-                        ...newAsset,
-                        flags: {
-                          ...newAsset.flags,
-                          requireAuth: checked as boolean,
-                        },
-                        preset: "Custom",
-                      })
-                    }
+                    onCheckedChange={handleCheck}
+                    disabled={hasBeenChecked}
                     className="mt-1"
                   />
                   <div className="flex-1">
@@ -335,32 +450,16 @@ export function AssetCreator() {
                 </div>
 
                 <div className="flex items-start gap-3 p-3 bg-slate-800/30 rounded-lg">
-                  <Checkbox
-                    checked={newAsset.flags.freeze}
-                    onCheckedChange={(checked) =>
-                      setNewAsset({
-                        ...newAsset,
-                        flags: {
-                          ...newAsset.flags,
-                          freeze: checked as boolean,
-                        },
-                        preset: "Custom",
-                      })
-                    }
-                    className="mt-1"
-                  />
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
                       <Snowflake className="w-4 h-4 text-cyan-400" />
                       <span className="text-slate-200">Freeze</span>
                     </div>
                     <p className="text-xs text-slate-500">
-                      Ability to freeze individual accounts or global freeze
+                      You will be able to frereze assets
                     </p>
                   </div>
                 </div>
-
-                
               </div>
             </div>
 

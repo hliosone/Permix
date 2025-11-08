@@ -127,7 +127,7 @@ export function EnterpriseDashboard({
                     <DomainCreator walletManager={data.walletManager} /> // 🟢 pass it down
                   )}
                   {activeTab === "dexs" && <PermissionedDEXsCreator />}
-                  {activeTab === "assets" && <AssetCreator />}
+                  {activeTab === "assets" && <AssetCreator walletManager={data.walletManager} />}
                   {activeTab === "delegation" && <PermissionDelegation />}
                 </div>
               </DEXProvider>
