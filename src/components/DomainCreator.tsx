@@ -11,6 +11,8 @@ import { Badge } from './ui/badge';
 import { toast } from 'sonner@2.0.3';
 import { usePolicies } from "../context/PolicyContext";
 import { useDomains } from "../context/DomainContext";
+import { Buffer } from "buffer";
+
 
 
 interface TradingPair {
@@ -21,6 +23,7 @@ interface TradingPair {
 interface Domain {
   id: string;
   domainId: string;
+  alias?: string;
   policyName: string;
   tradingPairs: TradingPair[];
   hybridOffers: boolean;
@@ -89,6 +92,10 @@ export function DomainCreator({ walletManager }: DomainCreatorProps) {
     });
   };
 
+  // Converts UTF-8 text to uppercase hex string for XRPL transactions
+  const textToHex = (text: string): string =>
+    Buffer.from(text, "utf8").toString("hex").toUpperCase();
+
   const createDomain = () => {
     if (!newDomain.policyName) {
       toast.error("Please select a policy");
@@ -98,6 +105,7 @@ export function DomainCreator({ walletManager }: DomainCreatorProps) {
     const domain: Domain = {
       id: Date.now().toString(),
       domainId: `DOM-${Math.random().toString(16).substr(2, 8).toUpperCase()}`,
+      alias: newDomain.alias || "",
       policyName: newDomain.policyName,
       tradingPairs: [], // kept empty for compatibility
       hybridOffers: false,
@@ -145,7 +153,9 @@ export function DomainCreator({ walletManager }: DomainCreatorProps) {
               <div>
                 <div className="flex items-center gap-3 mb-2">
                   <Globe className="w-5 h-5 text-teal-400" />
-                  <h3 className="text-lg text-slate-100">{domain.domainId}</h3>
+                  <h3 className="text-lg text-slate-100">
+                    {domain.alias ? domain.alias : domain.domainId}
+                  </h3>
                   <Badge
                     variant="outline"
                     className="border-teal-500/30 text-teal-400"
@@ -263,6 +273,24 @@ export function DomainCreator({ walletManager }: DomainCreatorProps) {
                 </p>
               </div>
 
+              {/* Domain Alias Input */}
+              <div className="space-y-2">
+                <Label>Domain Alias (optional)</Label>
+                <Input
+                  type="text"
+                  placeholder="e.g. Private Euro Exchange"
+                  value={newDomain.alias || ""}
+                  onChange={(e) =>
+                    setNewDomain({ ...newDomain, alias: e.target.value })
+                  }
+                  className="bg-slate-800/50 border-slate-700 text-slate-100 placeholder:text-slate-500"
+                />
+                <p className="text-xs text-slate-500">
+                  Give your domain a readable alias. This will appear instead of
+                  its ID.
+                </p>
+              </div>
+
               {/* Preview */}
               {newDomain.policyName && (
                 <div className="p-4 bg-teal-500/10 border border-teal-500/20 rounded-lg">
@@ -310,7 +338,7 @@ export function DomainCreator({ walletManager }: DomainCreatorProps) {
                         {
                           Credential: {
                             Issuer: domainCreatorAddress,
-                            CredentialType: newDomain.policyName,
+                            CredentialType: textToHex(newDomain.policyName),
                           },
                         },
                       ],

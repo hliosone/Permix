@@ -6,17 +6,21 @@ import { PermissionDelegation } from './PermissionDelegation';
 import { DashboardOverview } from './DashboardOverview';
 import { PolicyProvider } from "../context/PolicyContext"; 
 import { DomainProvider } from "../context/DomainContext";
+import { PermissionedDEXsCreator } from "./PermissionedDEXsCreator";
+import { DEXProvider } from "../context/DEXContext"; // add this import at top
 
-import { 
-  LayoutDashboard, 
-  FileText, 
-  Globe, 
-  Coins, 
-  ShieldCheck, 
+
+import {
+  LayoutDashboard,
+  FileText,
+  Globe,
+  TrendingUp,
+  Coins,
+  ShieldCheck,
   LogOut,
-  Wallet
-} from 'lucide-react';
-import { Button } from './ui/button';
+  Wallet,
+} from "lucide-react";
+import { Button } from "./ui/button";
 
 interface EnterpriseDashboardProps {
   data: {
@@ -27,17 +31,27 @@ interface EnterpriseDashboardProps {
   onLogout: () => void;
 }
 
-type Tab = 'dashboard' | 'policies' | 'domains' | 'assets' | 'delegation';
+type Tab =
+  | "dashboard"
+  | "policies"
+  | "domains"
+  | "dexs"
+  | "assets"
+  | "delegation";
 
-export function EnterpriseDashboard({ data, onLogout }: EnterpriseDashboardProps) {
-  const [activeTab, setActiveTab] = useState<Tab>('dashboard');
+export function EnterpriseDashboard({
+  data,
+  onLogout,
+}: EnterpriseDashboardProps) {
+  const [activeTab, setActiveTab] = useState<Tab>("dashboard");
 
   const tabs = [
-    { id: 'dashboard' as Tab, label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'policies' as Tab, label: 'Policies', icon: FileText },
-    { id: 'domains' as Tab, label: 'Domains', icon: Globe },
-    { id: 'assets' as Tab, label: 'Assets', icon: Coins },
-    { id: 'delegation' as Tab, label: 'Delegation', icon: ShieldCheck },
+    { id: "dashboard" as Tab, label: "Dashboard", icon: LayoutDashboard },
+    { id: "policies" as Tab, label: "Policies", icon: FileText },
+    { id: "domains" as Tab, label: "Domains", icon: Globe },
+    { id: "dexs" as Tab, label: "Permissioned DEXs", icon: TrendingUp },
+    { id: "assets" as Tab, label: "Assets", icon: Coins },
+    { id: "delegation" as Tab, label: "Delegation", icon: ShieldCheck },
   ];
 
   return (
@@ -103,17 +117,20 @@ export function EnterpriseDashboard({ data, onLogout }: EnterpriseDashboardProps
         <div className="flex-1 overflow-auto">
           <PolicyProvider>
             <DomainProvider>
-              <div className="p-8">
-                {activeTab === "dashboard" && (
-                  <DashboardOverview companyName={data.companyName} />
-                )}
-                {activeTab === "policies" && <PolicyBuilder />}
-                {activeTab === "domains" && (
-                  <DomainCreator walletManager={data.walletManager} /> // 🟢 pass it down
-                )}
-                {activeTab === "assets" && <AssetCreator />}
-                {activeTab === "delegation" && <PermissionDelegation />}
-              </div>
+              <DEXProvider>
+                <div className="p-8">
+                  {activeTab === "dashboard" && (
+                    <DashboardOverview companyName={data.companyName} />
+                  )}
+                  {activeTab === "policies" && <PolicyBuilder />}
+                  {activeTab === "domains" && (
+                    <DomainCreator walletManager={data.walletManager} /> // 🟢 pass it down
+                  )}
+                  {activeTab === "dexs" && <PermissionedDEXsCreator />}
+                  {activeTab === "assets" && <AssetCreator />}
+                  {activeTab === "delegation" && <PermissionDelegation />}
+                </div>
+              </DEXProvider>
             </DomainProvider>
           </PolicyProvider>
         </div>
