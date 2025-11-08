@@ -6,6 +6,8 @@ import { UserDashboard } from './components/UserDashboard';
 import { Wallet, Building2, User } from 'lucide-react';
 import { Button } from './components/ui/button';
 import { DomainProvider } from "./context/DomainContext";
+import { DashboardOverview } from "./components/DashboardOverview";
+import { SeedPhraseProvider } from "./context/SeedPhraseContext";
 
 type UserRole = "enterprise" | "user" | null;
 
@@ -166,21 +168,25 @@ export default function App() {
   if (role === "enterprise") {
     if (!isAuthenticated) {
       return (
-        <EnterpriseLogin
-          onAuth={handleEnterpriseAuth}
-          onBack={() => setRole(null)}
-        />
+        <SeedPhraseProvider>
+          <EnterpriseLogin
+            onAuth={handleEnterpriseAuth}
+            onBack={() => setRole(null)}
+          />
+        </SeedPhraseProvider>
       );
     }
     return (
-      <EnterpriseDashboard
-        data={{
-          walletAddress: enterpriseData!.walletAddress,
-          companyName: enterpriseData!.companyName,
-          walletManager: enterpriseData!.walletManager, // 🟩 add this
-        }}
-        onLogout={handleLogout}
-      />
+      <SeedPhraseProvider>
+        <EnterpriseDashboard
+          data={{
+            walletAddress: enterpriseData!.walletAddress,
+            companyName: enterpriseData!.companyName,
+            walletManager: enterpriseData!.walletManager, // 🟩 add this
+          }}
+          onLogout={handleLogout}
+        />
+      </SeedPhraseProvider>
     );
   }
 

@@ -20,17 +20,19 @@ import {
   TableRow,
 } from "./ui/table";
 import { useState } from "react";
+import { useSeedPhrase } from "../context/SeedPhraseContext";
 
 interface DashboardOverviewProps {
   companyName: string;
 }
 
 export function DashboardOverview({ companyName }: DashboardOverviewProps) {
-  const [seedPhrase, setSeedPhrase] = useState("");
+  const { seedPhrase, setSeedPhrase } = useSeedPhrase();
 
   const handleSeedPhraseSubmit = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && seedPhrase.trim()) {
       // toast.success("Seed phrase securely processed");
+      console.log("✅ Seed phrase submitted:", seedPhrase);
       setSeedPhrase("");
     }
   };

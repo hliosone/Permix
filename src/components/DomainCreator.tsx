@@ -13,8 +13,7 @@ import { usePolicies } from "../context/PolicyContext";
 import { useDomains } from "../context/DomainContext";
 import { Buffer } from "buffer";
 import { Client, Wallet } from "xrpl";
-
-
+import { useSeedPhrase } from "../context/SeedPhraseContext";
 
 interface TradingPair {
   base: string;
@@ -50,6 +49,7 @@ export function DomainCreator({ walletManager }: DomainCreatorProps) {
     hybridOffers: false,
   });
   const [currentPair, setCurrentPair] = useState({ base: "", quote: "" });
+  const { seedPhrase, setSeedPhrase } = useSeedPhrase();
 
   //const availablePolicies = ["MiCA Compliance Policy", "Custom Policy"];
   const { policies } = usePolicies();
@@ -330,7 +330,6 @@ export function DomainCreator({ walletManager }: DomainCreatorProps) {
                       return;
                     }
 
-
                     // Build the XRPL transaction
                     const domainCreatorAddress = walletManager.account.address;
 
@@ -347,26 +346,28 @@ export function DomainCreator({ walletManager }: DomainCreatorProps) {
                       ],
                     };
 
-                    const client = new Client('wss://s.devnet.rippletest.net:51233');
+                    const client = new Client(
+                      "wss://s.devnet.rippletest.net:51233"
+                    );
                     await client.connect();
 
                     // WE DID THIS because Crossmark doesn't support for the moment the PermissionDomainSet transaction
                     // TODO: remplace la seed dans fromSeed par une variable de seed du wallet d'entreprise
                     const permissionedDelegateMockWallet =
-                        Wallet.fromSeed("sEdTQ8FaY5rW8rMGZep3i1dZXavMBVc"); // KYC Issuer
+                      Wallet.fromSeed(seedPhrase); // KYC Issuer
+                      console.log("Seed domain creator", seedPhrase)
 
-                        try {
-                            const response = await client.submitAndWait(tx, {
-                                autofill: true,
-                                wallet: permissionedDelegateMockWallet,
-                            });
+                    try {
+                      const response = await client.submitAndWait(tx, {
+                        autofill: true,
+                        wallet: permissionedDelegateMockWallet,
+                      });
 
-                            return response.result // si cest tesSUCCESS cest good sinon autre cest non
-
-                        } catch (error) {
-                            //console.log( Error: ${error.message});
-                            await client.disconnect();
-                        }
+                      return response.result; // si cest tesSUCCESS cest good sinon autre cest non
+                    } catch (error) {
+                      //console.log( Error: ${error.message});
+                      await client.disconnect();
+                    }
                     await client.disconnect();
                   }}
                   className="flex-1 bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700 text-white"

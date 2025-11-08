@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { Badge } from './ui/badge';
 import { toast } from 'sonner@2.0.3';
 import { Client, Wallet } from "xrpl";
+import { useSeedPhrase } from "../context/SeedPhraseContext";
 
 interface Asset {
   id: string;
@@ -68,6 +69,8 @@ export function AssetCreator({ walletManager }: AssetCreatorProps) {
   const [hasBeenChecked, setHasBeenChecked] = useState(
     newAsset.flags.requireAuth
   );
+
+  const { seedPhrase, setSeedPhrase } = useSeedPhrase();
 
   const walletAddress = "rfbsmVCbmAqPsCNRQNDoDAvMSQJwBvMTyn";
 
@@ -141,42 +144,37 @@ export function AssetCreator({ walletManager }: AssetCreatorProps) {
 
     let quantity = "100";
 
-    // For some weird reason, Crossmark wallet rejects TrustSet with Account other than 
+    // For some weird reason, Crossmark wallet rejects TrustSet with Account other than
     // wallet manager account address
 
-    
+    const SetTrust = {
+      TransactionType: "TrustSet",
+      Account: walletAddress,
+      LimitAmount: {
+        currency: newAsset.code,
+        issuer: walletManager.account.address,
+        value: quantity,
+      },
+    };
 
-    const SetTrust = 
-      {
-        TransactionType: "TrustSet",
-        Account: walletAddress,
-        LimitAmount: {
-          currency: newAsset.code,
-          issuer: walletManager.account.address,
-          value: quantity,
-        },
-      }
-
-    const client = new Client('wss://s.devnet.rippletest.net:51233');
+    const client = new Client("wss://s.devnet.rippletest.net:51233");
     await client.connect();
 
     // WE DID THIS because Crossmark doesn't support for the moment the PermissionDomainSet transaction
     // TODO: remplace la seed dans fromSeed par une variable de seed du wallet d'entreprise
-    const permissionedDelegateMockWallet =
-        Wallet.fromSeed("sEdTQ8FaY5rW8rMGZep3i1dZXavMBVc"); // KYC Issuer
+    const permissionedDelegateMockWallet = Wallet.fromSeed(seedPhrase); // KYC Issuer
 
-        try {
-            const response = await client.submitAndWait(SetTrust, {
-                autofill: true,
-                wallet: permissionedDelegateMockWallet,
-            });
+    try {
+      const response = await client.submitAndWait(SetTrust, {
+        autofill: true,
+        wallet: permissionedDelegateMockWallet,
+      });
 
-            return response.result // si cest tesSUCCESS cest good sinon autre cest non
-
-        } catch (error) {
-            //console.log( Error: ${error.message});
-            await client.disconnect();
-        }
+      return response.result; // si cest tesSUCCESS cest good sinon autre cest non
+    } catch (error) {
+      //console.log( Error: ${error.message});
+      await client.disconnect();
+    }
     await client.disconnect();
 
     try {
