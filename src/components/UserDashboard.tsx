@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { DomainSelector } from './DomainSelector';
 import { VerificationFlow } from './VerificationFlow';
 import { PermissionedDEX } from './PermissionedDEX';
@@ -13,7 +13,88 @@ import {
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { useDomains } from "../context/DomainContext";
+import { Client, Wallet as XRPLWallet } from 'xrpl';
 
+// Helper: Get domain ID from ledger
+const getDomainId = async (client: Client, ownerAddress: string, sequence: number): Promise<string | null> => {
+  try {
+    const accountObjects = await client.request({
+      command: "account_objects",
+      account: ownerAddress,
+      ledger_index: "validated",
+      type: "permissioned_domain"
+    });
+    
+    const domain = (accountObjects.result as any).account_objects.find((obj: any) => 
+      obj.Sequence === sequence
+    );
+    
+    return domain?.index || null;
+  } catch (error: any) {
+    console.log(`Error fetching domain ID: ${error?.message}`);
+    return null;
+  }
+};
+
+// Helper: Get order book from XRPL - gets ALL offers from the orderbook
+const getOrderBook = async (
+  client: Client,
+  baseCurrency: string,
+  baseIssuer: string | undefined,
+  quoteCurrency: string,
+  quoteIssuer: string | undefined,
+  limit: number = 50
+) => {
+  try {
+    const takerPays = baseCurrency === 'XRP' 
+      ? 'XRP' 
+      : { currency: baseCurrency, issuer: baseIssuer };
+
+    const takerGets = quoteCurrency === 'XRP'
+      ? 'XRP'
+      : { currency: quoteCurrency, issuer: quoteIssuer };
+
+    console.log('Fetching order book with:', { takerPays, takerGets });
+
+    const orderBookResponse = await client.request({
+      command: 'book_offers',
+      taker_pays: takerPays as any,
+      taker_gets: takerGets as any,
+      ledger_index: 'validated',
+      limit,
+    } as any);
+
+    const offers = (orderBookResponse.result as any).offers || [];
+    console.log(`Found ${offers.length} total offers in orderbook`);
+
+    return { success: true, offers };
+  } catch (error: any) {
+    console.error('Error fetching order book:', error);
+    return { success: false, offers: [], error: error?.message };
+  }
+};
+
+// Helper: Get account offers
+const getAccountOffers = async (client: Client, accountAddress: string, domainId?: string) => {
+  try {
+    const accountOffersResponse = await client.request({
+      command: 'account_offers',
+      account: accountAddress,
+      ledger_index: 'validated',
+    });
+
+    let offers = (accountOffersResponse.result as any).offers || [];
+    
+    if (domainId) {
+      offers = offers.filter((offer: any) => offer.DomainID === domainId);
+    }
+
+    return { success: true, offers };
+  } catch (error: any) {
+    console.error('Error fetching account offers:', error);
+    return { success: false, offers: [], error: error?.message };
+  }
+};
 
 interface UserDashboardProps {
   data: {
@@ -33,6 +114,22 @@ export function UserDashboard({ data, onLogout }: UserDashboardProps) {
     policy: string;
   } | null>(null);
   const [isVerified, setIsVerified] = useState(false);
+  
+  // Retrieve environment variables
+  const user2Address = (import.meta as any).env?.VITE_KYC_USER_2_ADDR || '';
+  const user2Seed = (import.meta as any).env?.VITE_KYC_USER_2_SEED || '';
+  
+  // Log environment variables for debugging
+  useEffect(() => {
+    console.log('User 2 Address from .env:', user2Address);
+    console.log('User 2 Seed from .env:', user2Seed ? '***' + user2Seed.slice(-4) : 'Not set');
+  }, [user2Address, user2Seed]);
+  
+  // State for orderbook data
+  const [orderBookData, setOrderBookData] = useState<any>(null);
+  const [accountOffers, setAccountOffers] = useState<any[]>([]);
+  const [xrplClient, setXrplClient] = useState<Client | null>(null);
+  const [loading, setLoading] = useState(false);
 
   const handleDomainSelect = (domain: { id: string; name: string; policy: string }) => {
     setSelectedDomain(domain);
@@ -43,6 +140,165 @@ export function UserDashboard({ data, onLogout }: UserDashboardProps) {
     setIsVerified(true);
     setCurrentStep('trading');
   };
+
+  // Refresh orderbook data
+  const handleRefreshOrderbook = async () => {
+    if (!xrplClient || !user2Address) return;
+    
+    console.log('🔄 Refreshing orderbook data...');
+    setLoading(true);
+    
+    try {
+      const domainId = 'D04BB88665B23434A0B814E6F12F66CC2C91AEA6CB0736B08988BFB0FA86A1B9';
+      
+      // Fetch account offers
+      const offersResult = await getAccountOffers(xrplClient, user2Address);
+      if (offersResult.success && offersResult.offers) {
+        setAccountOffers(offersResult.offers);
+        console.log('✅ Refreshed account offers:', offersResult.offers.length);
+      }
+
+      // Fetch orderbook in both directions
+      const sellOrdersResult = await getOrderBook(xrplClient, 'DDD', user2Address, 'CCC', user2Address, 50);
+      const buyOrdersResult = await getOrderBook(xrplClient, 'CCC', user2Address, 'DDD', user2Address, 50);
+      
+      const allOffers = [
+        ...(sellOrdersResult.offers || []),
+        ...(buyOrdersResult.offers || []),
+      ];
+      
+      const domainOrderBookOffers = allOffers.filter((offer: any) => offer.DomainID === domainId);
+      
+      setOrderBookData({
+        success: true,
+        offers: domainOrderBookOffers,
+        allOffers: allOffers,
+      });
+      
+      console.log('✅ Refreshed orderbook:', domainOrderBookOffers.length);
+    } catch (error) {
+      console.error('Failed to refresh:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Initialize XRPL client on mount
+  useEffect(() => {
+    const initClient = async () => {
+      try {
+        const client = new Client('wss://s.devnet.rippletest.net:51233');
+        await client.connect();
+        console.log('Connected to XRPL Devnet');
+        setXrplClient(client);
+      } catch (error) {
+        console.error('Failed to initialize XRPL client:', error);
+      }
+    };
+    initClient();
+
+    return () => {
+      if (xrplClient) {
+        xrplClient.disconnect();
+      }
+    };
+  }, []);
+
+  // Fetch orderbook data when trading view is active
+  useEffect(() => {
+    const fetchOrderBookData = async () => {
+      if (!xrplClient || !user2Address) {
+        return;
+      }
+
+      setLoading(true);
+      try {
+        // Use the actual domain ID from the offer
+        const domainId = 'D04BB88665B23434A0B814E6F12F66CC2C91AEA6CB0736B08988BFB0FA86A1B9';
+        
+        console.log('Using Domain ID:', domainId);
+        console.log('Fetching orderbook for user:', user2Address);
+
+        // Fetch account offers for the user (no domain filter to see all offers)
+        const offersResult = await getAccountOffers(xrplClient, user2Address);
+        if (offersResult.success && offersResult.offers) {
+          setAccountOffers(offersResult.offers);
+          console.log('All account offers:', offersResult.offers);
+          
+          // Filter for domain-specific offers
+          const domainOffers = offersResult.offers.filter((offer: any) => offer.DomainID === domainId);
+          console.log('Domain-specific offers:', domainOffers);
+        }
+
+        // Fetch orderbook in BOTH directions to get all buy and sell orders
+        
+        // Direction 1: Selling DDD for CCC (TakerPays=DDD, TakerGets=CCC)
+        console.log('\n📊 Fetching orderbook: Selling DDD for CCC');
+        const sellOrdersResult = await getOrderBook(
+          xrplClient,
+          'DDD',
+          user2Address,
+          'CCC',
+          user2Address,
+          50
+        );
+
+        // Direction 2: Buying DDD with CCC (TakerPays=CCC, TakerGets=DDD)
+        console.log('\n📊 Fetching orderbook: Buying DDD with CCC');
+        const buyOrdersResult = await getOrderBook(
+          xrplClient,
+          'CCC',
+          user2Address,
+          'DDD',
+          user2Address,
+          50
+        );
+
+        // Combine all offers from both directions
+        const allOffers = [
+          ...(sellOrdersResult.offers || []),
+          ...(buyOrdersResult.offers || []),
+        ];
+
+        console.log(`Found ${sellOrdersResult.offers?.length || 0} sell-side offers`);
+        console.log(`Found ${buyOrdersResult.offers?.length || 0} buy-side offers`);
+        console.log(`Total: ${allOffers.length} offers`);
+        
+        // Log each offer for debugging
+        allOffers.forEach((offer: any, idx: number) => {
+          console.log(`Offer ${idx}:`, {
+            Account: offer.Account,
+            TakerGets: offer.TakerGets,
+            TakerPays: offer.TakerPays,
+            DomainID: offer.DomainID,
+            taker_gets: offer.taker_gets,
+            taker_pays: offer.taker_pays,
+          });
+        });
+        
+        // Filter for domain-specific offers manually
+        const domainOrderBookOffers = allOffers.filter(
+          (offer: any) => offer.DomainID === domainId
+        );
+        
+        console.log(`Found ${domainOrderBookOffers.length} offers for domain ${domainId}`);
+        
+        setOrderBookData({
+          success: true,
+          offers: domainOrderBookOffers,
+          allOffers: allOffers, // Keep all offers for debugging
+        });
+      } catch (error) {
+        console.error('Failed to fetch orderbook data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (currentStep === 'trading' && xrplClient) {
+      fetchOrderBookData();
+    }
+  }, [xrplClient, currentStep, user2Address]);
 
   const steps = [
     { id: 'select-domain', label: 'Select Domain', icon: Globe },
@@ -68,7 +324,14 @@ export function UserDashboard({ data, onLogout }: UserDashboardProps) {
                   <h1 className="text-xl bg-gradient-to-r from-amber-400 to-teal-400 bg-clip-text text-transparent">
                     PermiX
                   </h1>
-                  <p className="text-xs text-slate-500 font-mono">{data.walletAddress}</p>
+                  <p className="text-xs text-slate-500 font-mono">
+                    {user2Address || data.walletAddress}
+                  </p>
+                  {user2Address && (
+                    <p className="text-xs text-slate-600 font-mono mt-1">
+                      User 2 (from .env)
+                    </p>
+                  )}
                 </div>
               </div>
               <Button
@@ -155,6 +418,10 @@ export function UserDashboard({ data, onLogout }: UserDashboardProps) {
             <PermissionedDEX
               domain={selectedDomain}
               onViewPortfolio={() => setCurrentStep('portfolio')}
+              orderBookData={orderBookData}
+              accountOffers={accountOffers}
+              loading={loading}
+              onRefreshNeeded={handleRefreshOrderbook}
             />
           )}
           {currentStep === 'portfolio' && selectedDomain && (
