@@ -12,6 +12,8 @@ import {
   LogOut 
 } from 'lucide-react';
 import { Button } from './ui/button';
+import { useDomains } from "../context/DomainContext";
+
 
 interface UserDashboardProps {
   data: {
@@ -23,6 +25,7 @@ interface UserDashboardProps {
 type UserStep = 'select-domain' | 'verify' | 'trading' | 'portfolio';
 
 export function UserDashboard({ data, onLogout }: UserDashboardProps) {
+  const {domains} = useDomains();
   const [currentStep, setCurrentStep] = useState<UserStep>('select-domain');
   const [selectedDomain, setSelectedDomain] = useState<{
     id: string;
@@ -139,7 +142,7 @@ export function UserDashboard({ data, onLogout }: UserDashboardProps) {
         {/* Main Content */}
         <div className="max-w-7xl mx-auto px-6 py-8">
           {currentStep === 'select-domain' && (
-            <DomainSelector onSelect={handleDomainSelect} />
+            <DomainSelector onSelect={handleDomainSelect} domains={domains} />
           )}
           {currentStep === 'verify' && selectedDomain && (
             <VerificationFlow

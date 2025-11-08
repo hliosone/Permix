@@ -5,8 +5,9 @@ import { EnterpriseDashboard } from './components/EnterpriseDashboard';
 import { UserDashboard } from './components/UserDashboard';
 import { Wallet, Building2, User } from 'lucide-react';
 import { Button } from './components/ui/button';
+import { DomainProvider } from "./context/DomainContext";
 
-type UserRole = 'enterprise' | 'user' | null;
+type UserRole = "enterprise" | "user" | null;
 
 interface EnterpriseData {
   walletAddress: string;
@@ -188,7 +189,11 @@ export default function App() {
     if (!isAuthenticated) {
       return <UserLogin onAuth={handleUserAuth} onBack={() => setRole(null)} />;
     }
-    return <UserDashboard data={userData!} onLogout={handleLogout} />;
+    return (
+      <DomainProvider>
+        <UserDashboard data={userData!} onLogout={handleLogout} />
+      </DomainProvider>
+    );
   }
 
   return null;

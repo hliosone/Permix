@@ -11,18 +11,11 @@ interface TradingPair {
   quote: string;
 }
 
-interface Domain {
+export interface Domain {
   id: string;
   domainId: string;
   policyName: string;
-  tradingPairs: TradingPair[];
-  hybridOffers: boolean;
-  createdAt: string;
-  stats: {
-    users: number;
-    volume24h: string;
-    trades: number;
-  };
+  alias?: string;
 }
 
 interface DomainContextType {
@@ -65,7 +58,7 @@ export const DomainProvider = ({ children }: { children: ReactNode }) => {
   );
 };
 
-export const useDomains = () => {
+export function useDomains() {
   const context = useContext(DomainContext);
   if (!context)
     throw new Error("useDomains must be used within DomainProvider");
